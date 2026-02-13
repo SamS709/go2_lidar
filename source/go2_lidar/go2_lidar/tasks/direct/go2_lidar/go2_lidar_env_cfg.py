@@ -187,8 +187,8 @@ class Go2LidarFlatEnvCfg(DirectRLEnvCfg):
 class Go2LidarRoughEnvCfg(Go2LidarFlatEnvCfg):
     # env
     observation_space = 247
-    ROUGH_TERRAINS_CFG.num_cols = 3
-    ROUGH_TERRAINS_CFG.num_rows = 2
+    # ROUGH_TERRAINS_CFG.num_cols = 3
+    # ROUGH_TERRAINS_CFG.num_rows = 2
     ROUGH_TERRAINS_CFG.sub_terrains["boxes"].grid_height_range = (0.025, 0.1)
     ROUGH_TERRAINS_CFG.sub_terrains["random_rough"].noise_range = (0.01, 0.06)
     ROUGH_TERRAINS_CFG.sub_terrains["random_rough"].noise_step = 0.01
@@ -210,43 +210,58 @@ class Go2LidarRoughEnvCfg(Go2LidarFlatEnvCfg):
         ),
         debug_vis=False,
     )
-     # Heightmap configuration
-    height_map_dist = 1.0
-    res = 6  # resolution of the heightmap (cells per meter)
-    height_map_cells = int(2 * height_map_dist * res) ** 2  
-    observation_space = 53 + height_map_cells  
+    #  # Heightmap configuration
+    # height_map_dist = 1.0
+    # res = 6  # resolution of the heightmap (cells per meter)
+    # height_map_cells = int(2 * height_map_dist * res) ** 2  
+    # observation_space = 53 + height_map_cells  
     
-    lidar_range = height_map_dist * 3.0 # * 1.4142135623730951  # sqrt(2)
+    # lidar_range = height_map_dist * 3.0 # * 1.4142135623730951  # sqrt(2)
     lidar_offset = (0.28945, 0.0, -0.04682)
+
+    # height_scanner = RayCasterCfg(
+    #     prim_path="/World/envs/env_.*/Robot/base",
+    #     update_period=1 / 60,
+    #     offset=RayCasterCfg.OffsetCfg(
+    #         pos=lidar_offset,
+    #         rot=lidar_rotation,
+    #     ),
+    #     mesh_prim_paths=["/World/ground"],
+    #     ray_alignment="base",
+    #     pattern_cfg=patterns.LidarPatternCfg(
+    #         channels=128, vertical_fov_range=[-90.0, 90.0], horizontal_fov_range=[-180, 180], horizontal_res=2.0
+    #     ),
+    #     max_distance=lidar_range,
+    #     debug_vis=False,
+    # ) height_scanner = RayCasterCfg(
+    #     prim_path="/World/envs/env_.*/Robot/base",
+    #     update_period=1 / 60,
+    #     offset=RayCasterCfg.OffsetCfg(
+    #         pos=lidar_offset,
+    #         rot=lidar_rotation,
+    #     ),
+    #     mesh_prim_paths=["/World/ground"],
+    #     ray_alignment="base",
+    #     pattern_cfg=patterns.LidarPatternCfg(
+    #         channels=128, vertical_fov_range=[-90.0, 90.0], horizontal_fov_range=[-180, 180], horizontal_res=2.0
+    #     ),
+    #     max_distance=lidar_range,
+    #     debug_vis=False,
+    # )
+
     # Pre-computed quaternion (w, x, y, z) from euler angles (-pi, pi - 2.8782, -pi)
     lidar_rotation = (1.3132e-01, 3.7593e-08, 9.9134e-01, 3.7593e-08)
-    
     height_scanner = RayCasterCfg(
         prim_path="/World/envs/env_.*/Robot/base",
-        update_period=1 / 60,
-        offset=RayCasterCfg.OffsetCfg(
-            pos=lidar_offset,
-            rot=lidar_rotation,
-        ),
-        mesh_prim_paths=["/World/ground"],
-        ray_alignment="base",
-        pattern_cfg=patterns.LidarPatternCfg(
-            channels=128, vertical_fov_range=[-90.0, 90.0], horizontal_fov_range=[-180, 180], horizontal_res=2.0
-        ),
-        max_distance=lidar_range,
-        debug_vis=False,
-    )
-
-    # # we add a height scanner for perceptive locomotion
-    height_scanner_critic = RayCasterCfg(
-        prim_path="/World/envs/env_.*/Robot/base",
-        offset=RayCasterCfg.OffsetCfg(pos=(0.0, 0.0, 20.0)),
+        offset=RayCasterCfg.OffsetCfg(pos=(0.28945, 0.0, -0.04682)),
         ray_alignment="yaw",
-        pattern_cfg=patterns.GridPatternCfg(resolution=0.1, size=[1.6, 1.0]),
+        pattern_cfg=patterns.GridPatternCfg(resolution=0.1, size=[1.9, 0.9], ordering = "yx"),
         debug_vis=False,
         mesh_prim_paths=["/World/ground"],
     )
    
+
+    
     
 
     # reward scales (override from flat config)

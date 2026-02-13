@@ -17,6 +17,9 @@ from isaaclab.utils.math import quat_conjugate, quat_apply
 
 from .go2_lidar_env_cfg import Go2LidarFlatEnvCfg, Go2LidarRoughEnvCfg
 
+""" windows:
+python .\scripts\rsl_rl\train.py --task Isaac-Velocity-Rough-Go2-Lidar-Direct-v0 --num_envs 2048 --headless
+"""
 
 class Go2LidarEnv(DirectRLEnv):
     cfg: Go2LidarFlatEnvCfg | Go2LidarRoughEnvCfg
@@ -63,10 +66,10 @@ class Go2LidarEnv(DirectRLEnv):
         if isinstance(self.cfg, Go2LidarRoughEnvCfg):
             # we add a height scanner for perceptive locomotion
             self._height_scanner = RayCaster(self.cfg.height_scanner)
-            self._height_scanner_critic = RayCaster(self.cfg.height_scanner_critic)
-            
+            # self._height_scanner_critic = RayCaster(self.cfg.height_scanner_critic)
             self.scene.sensors["height_scanner"] = self._height_scanner
-            self.scene.sensors["height_scanner_critic"] = self._height_scanner_critic
+            # self.scene.sensors["height_scanner_critic"] = self._height_scanner_critic
+
         self.cfg.terrain.num_envs = self.scene.cfg.num_envs
         self.cfg.terrain.env_spacing = self.scene.cfg.env_spacing
         self._terrain = self.cfg.terrain.class_type(self.cfg.terrain)
@@ -152,10 +155,10 @@ class Go2LidarEnv(DirectRLEnv):
         
         height_data = None
         if isinstance(self.cfg, Go2LidarRoughEnvCfg):
-            height_data_critic = (
-                self._height_scanner_critic.data.pos_w[:, 2].unsqueeze(1) - self._height_scanner_critic.data.ray_hits_w[..., 2] - 0.35
-            ).clip(-1.0, 1.0)
-            height_data = self._get_lidar_obs()
+            height_data = height_data = (
+                self._height_scanner.data.pos_w[:, 2].unsqueeze(1) - self._height_scanner.data.ray_hits_w[..., 2] - 0.28
+            ).reshape(self.num_envs, 2*10, 1*10).flip(1,2)[:,:15,:].flatten(1)
+            # height_data = self._get_lidar_obs()
         foot_contacts = (torch.norm(self._contact_sensor.data.net_forces_w[:, self._feet_ids], dim=-1) > 1.0).float()
         # Extract yaw angle from quaternion and encode as sin/cos
         actor_obs = torch.cat(
@@ -189,7 +192,6 @@ class Go2LidarEnv(DirectRLEnv):
                     self._robot.data.joint_vel,
                     foot_contacts,
                     height_data,
-                    height_data_critic,
                     self._previous_actions,
                     self._actions,
                 )
