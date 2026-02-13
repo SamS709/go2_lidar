@@ -6,7 +6,9 @@
 """Script to train RL agent with RSL-RL."""
 
 """Launch Isaac Sim Simulator first."""
-
+"""
+python .\scripts\rsl_rl\train.py --task Isaac-Velocity-Rough-Go2-Lidar-Direct-v0 --num_envs 4096 --resume --load_run 2026-02-12_19-54-25 --headless
+"""
 import argparse
 import sys
 

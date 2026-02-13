@@ -1,0 +1,266 @@
+Overall, I don't understand what doesnt work with my technique.
+
+
+1.
+
+###########################################################################################################################################################
+###########################################################################################################################################################
+
+
+REWARDS:
+###########################################################################################################################################################
+
+    lin_vel_reward_scale = 1.5
+    yaw_rate_reward_scale = 0.75
+    z_vel_reward_scale = -2.0
+    ang_vel_reward_scale = -0.05
+    joint_torque_reward_scale = -2.0e-4
+    joint_accel_reward_scale = -2.5e-7
+    action_rate_reward_scale = -0.01
+    feet_air_time_reward_scale = 0.01
+    undesired_contact_reward_scale = 0.0
+    flat_orientation_reward_scale = 0.0
+
+
+COMMANDS:
+###########################################################################################################################################################
+
+    lin_vel_x=(-1.0, 1.0), lin_vel_y=(-1.0, 1.0), ang_vel_z=(-1.0, 1.0)
+
+
+RANDOMIZATION:
+###########################################################################################################################################################
+
+    physics_material = EventTerm(
+        func=mdp.randomize_rigid_body_material,
+        mode="startup",
+        params={
+            "asset_cfg": SceneEntityCfg("robot", body_names=".*"),
+            "static_friction_range": (0.8, 0.8),
+            "dynamic_friction_range": (0.6, 0.6),
+            "restitution_range": (0.0, 0.0),
+            "num_buckets": 64,
+        },
+    )
+
+    add_base_mass = EventTerm(
+        func=mdp.randomize_rigid_body_mass,
+        mode="startup",
+        params={
+            "asset_cfg": SceneEntityCfg("robot", body_names="base"),
+            "mass_distribution_params": (-1.0, 3.0),
+            "operation": "add",
+        },
+    )
+
+    base_com = EventTerm(
+        func=mdp.randomize_rigid_body_com,
+        mode="startup",
+        params={
+            "asset_cfg": SceneEntityCfg("robot", body_names="base"),
+            "com_range": {"x": (-0.05, 0.05), "y": (-0.05, 0.05), "z": (-0.01, 0.01)},
+        },
+    )
+
+    # reset
+    base_external_force_torque = EventTerm(
+        func=mdp.apply_external_force_torque,
+        mode="reset",
+        params={
+            "asset_cfg": SceneEntityCfg("robot", body_names="base"),
+            "force_range": (0.0, 0.0),
+            "torque_range": (-0.0, 0.0),
+        },
+    )
+
+    reset_base = EventTerm(
+        func=mdp.reset_root_state_uniform,
+        mode="reset",
+        params={
+            "pose_range": {"x": (-0.5, 0.5), "y": (-0.5, 0.5), "yaw": (-3.14, 3.14)},
+            "velocity_range": {
+                "x": (-0.1, 0.1),
+                "y": (-0.1, 0.1),
+                "z": (-0.1, 0.1),
+                "roll": (-0.1, 0.1),
+                "pitch": (-0.1, 0.1),
+                "yaw": (-0.1, 0.1),
+            },
+        },
+    )
+
+    reset_robot_joints = EventTerm(
+        func=mdp.reset_joints_by_scale,
+        mode="reset",
+        params={
+            "position_range": (0.5, 1.5),
+            "velocity_range": (0.0, 0.0),
+        },
+    )
+
+    # interval
+    push_robot = EventTerm(
+        func=mdp.push_by_setting_velocity,
+        mode="interval",
+        interval_range_s=(10.0, 15.0),
+        params={"velocity_range": {"x": (-0.5, 0.5), "y": (-0.5, 0.5)}},
+    )
+
+
+OBSERVATIONS:
+###########################################################################################################################################################
+
+    obs = torch.cat(
+            [
+                tensor
+                for tensor in (
+                    self._robot.data.root_lin_vel_b,
+                    self._robot.data.root_ang_vel_b,
+                    self._robot.data.projected_gravity_b,
+                    self._commands.get_command("base_velocity"),
+                    self._robot.data.joint_pos - self._robot.data.default_joint_pos,
+                    self._robot.data.joint_vel,
+                    height_data,
+                    self._actions,
+                )
+                if tensor is not None
+            ],
+            dim=-1,
+        )
+
+    
+2.
+
+###########################################################################################################################################################
+###########################################################################################################################################################
+
+
+REWARDS:
+###########################################################################################################################################################
+
+    lin_vel_reward_scale = 1.5
+    yaw_rate_reward_scale = 0.75
+    z_vel_reward_scale = -2.0
+    ang_vel_reward_scale = -0.05
+    joint_torque_reward_scale = -2.0e-4
+    joint_accel_reward_scale = -2.5e-7
+    action_rate_reward_scale = -0.01
+    feet_air_time_reward_scale = 0.01
+    undesired_contact_reward_scale = -1.0
+    flat_orientation_reward_scale = 0.0
+
+
+COMMANDS:
+###########################################################################################################################################################
+
+    lin_vel_x=(0.5, 1.0), lin_vel_y=(-0.5, 0.5), ang_vel_z=(-0.5, 0.5)
+
+RANDOMIZATION:
+###########################################################################################################################################################
+
+changes:
+
+    reset_robot_joints = EventTerm(
+        func=mdp.reset_joints_by_scale,
+        mode="reset",
+        params={
+            "position_range": (0.9, 1.1),
+            "velocity_range": (0.0, 0.0),
+        },
+    )
+
+
+
+OBSERVATIONS:
+###########################################################################################################################################################
+
+    SAME
+        
+      
+
+3.
+
+###########################################################################################################################################################
+###########################################################################################################################################################
+
+
+REWARDS:
+###########################################################################################################################################################
+
+    lin_vel_reward_scale = 1.5
+    yaw_rate_reward_scale = 0.75
+    z_vel_reward_scale = -2.0
+    ang_vel_reward_scale = -0.05
+    joint_torque_reward_scale = -2.0e-4
+    joint_accel_reward_scale = -2.5e-7
+    action_rate_reward_scale = -0.01
+    feet_air_time_reward_scale = 0.01
+    undesired_contact_reward_scale = -1.0
+    flat_orientation_reward_scale = 0.0
+
+
+COMMANDS:
+###########################################################################################################################################################
+
+    lin_vel_x=(0.5, 1.0), lin_vel_y=(-0.5, 0.5), ang_vel_z=(-0.5, 0.5)
+
+RANDOMIZATION:
+###########################################################################################################################################################
+
+changes:
+
+    reset_robot_joints = EventTerm(
+        func=mdp.reset_joints_by_scale,
+        mode="reset",
+        params={
+            "position_range": (0.9, 1.1),
+            "velocity_range": (0.0, 0.0),
+        },
+    )
+
+
+
+OBSERVATIONS:
+###########################################################################################################################################################
+
+    Different obs for actor and critic
+    
+    actor_obs = torch.cat(
+            [
+                tensor
+                for tensor in (
+                    self._robot.data.root_lin_vel_b,
+                    self._robot.data.root_ang_vel_b,
+                    self._robot.data.projected_gravity_b,
+                    self._commands.get_command("base_velocity"),
+                    self._robot.data.joint_pos - self._robot.data.default_joint_pos,
+                    self._robot.data.joint_vel,
+                    height_data,
+                    self._previous_actions,
+                    self._actions,
+                )
+                if tensor is not None
+            ],
+            dim=-1,
+        )
+        
+        critic_obs = torch.cat(
+            [
+                tensor
+                for tensor in (
+                    self._robot.data.root_lin_vel_b,
+                    self._robot.data.root_ang_vel_b,
+                    self._robot.data.projected_gravity_b,
+                    self._commands.get_command("base_velocity"),
+                    self._robot.data.joint_pos - self._robot.data.default_joint_pos,
+                    self._robot.data.joint_vel,
+                    foot_contacts,
+                    height_data_critic,
+                    self._previous_actions,
+                    self._actions,
+                )
+                if tensor is not None
+            ],
+            dim=-1,
+        )
+
