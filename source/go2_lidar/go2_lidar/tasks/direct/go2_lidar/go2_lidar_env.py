@@ -47,6 +47,7 @@ class Go2LidarEnv(DirectRLEnv):
                 "feet_air_time",
                 "undesired_contacts",
                 "flat_orientation_l2",
+                "def_pos"
             ]
         }
         # Get specific body indices
@@ -65,6 +66,7 @@ class Go2LidarEnv(DirectRLEnv):
             self._height_scanner_critic = RayCaster(self.cfg.height_scanner_critic)
             
             self.scene.sensors["height_scanner"] = self._height_scanner
+            self.scene.sensors["height_scanner_critic"] = self._height_scanner_critic
         self.cfg.terrain.num_envs = self.scene.cfg.num_envs
         self.cfg.terrain.env_spacing = self.scene.cfg.env_spacing
         self._terrain = self.cfg.terrain.class_type(self.cfg.terrain)
@@ -151,11 +153,10 @@ class Go2LidarEnv(DirectRLEnv):
         height_data = None
         if isinstance(self.cfg, Go2LidarRoughEnvCfg):
             height_data_critic = (
-                self._height_scanner_critic.data.pos_w[:, 2].unsqueeze(1) - self._height_scanner_critic.data.ray_hits_w[..., 2] - 0.5
+                self._height_scanner_critic.data.pos_w[:, 2].unsqueeze(1) - self._height_scanner_critic.data.ray_hits_w[..., 2] - 0.35
             ).clip(-1.0, 1.0)
             height_data = self._get_lidar_obs()
         foot_contacts = (torch.norm(self._contact_sensor.data.net_forces_w[:, self._feet_ids], dim=-1) > 1.0).float()
-
         # Extract yaw angle from quaternion and encode as sin/cos
         actor_obs = torch.cat(
             [
@@ -187,6 +188,7 @@ class Go2LidarEnv(DirectRLEnv):
                     self._robot.data.joint_pos - self._robot.data.default_joint_pos,
                     self._robot.data.joint_vel,
                     foot_contacts,
+                    height_data,
                     height_data_critic,
                     self._previous_actions,
                     self._actions,
@@ -231,7 +233,13 @@ class Go2LidarEnv(DirectRLEnv):
         contacts = torch.sum(is_contact, dim=1)
         # flat orientation
         flat_orientation = torch.sum(torch.square(self._robot.data.projected_gravity_b[:, :2]), dim=1)
-
+        # stay around default pos:        
+        cmd = torch.linalg.norm(self._commands.get_command("base_velocity"), dim=1)
+        body_vel = torch.linalg.norm(self._robot.data.root_lin_vel_b[:, :2], dim=1)
+        joint_deviation = torch.sum(torch.square(self._robot.data.joint_pos - self._robot.data.default_joint_pos), dim=1)
+        is_moving = torch.logical_or(cmd > 0.0, body_vel > self.cfg.velocity_threshold)
+        def_pos = torch.where(is_moving, joint_deviation, self.cfg.stand_still_scale * joint_deviation)
+        
         rewards = {
             "track_lin_vel_xy_exp": lin_vel_error_mapped * self.cfg.lin_vel_reward_scale * self.step_dt,
             "track_ang_vel_z_exp": yaw_rate_error_mapped * self.cfg.yaw_rate_reward_scale * self.step_dt,
@@ -243,6 +251,7 @@ class Go2LidarEnv(DirectRLEnv):
             "feet_air_time": air_time * self.cfg.feet_air_time_reward_scale * self.step_dt,
             "undesired_contacts": contacts * self.cfg.undesired_contact_reward_scale * self.step_dt,
             "flat_orientation_l2": flat_orientation * self.cfg.flat_orientation_reward_scale * self.step_dt,
+            "def_pos" : def_pos * self.cfg.def_pos_reward_scale * self.step_dt
         }
         reward = torch.sum(torch.stack(list(rewards.values())), dim=0)
         # Logging

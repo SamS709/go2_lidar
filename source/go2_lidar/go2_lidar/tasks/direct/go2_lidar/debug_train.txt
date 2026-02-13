@@ -176,7 +176,10 @@ OBSERVATIONS:
 
     SAME
         
-      
+RESULTS:
+###########################################################################################################################################################
+
+OK but not crazy, it go upstairs and downstairs but not thtat well  
 
 3.
 
@@ -224,7 +227,7 @@ OBSERVATIONS:
 ###########################################################################################################################################################
 
     Different obs for actor and critic
-    
+
     actor_obs = torch.cat(
             [
                 tensor
@@ -264,3 +267,9 @@ OBSERVATIONS:
             dim=-1,
         )
 
+
+RESULTS:
+###########################################################################################################################################################
+
+NOT WORKING... because the height data for the critic wasn't attahed to the robot. 
+To attach it, i just added this line in go2_lidar_env.py in _setup_scene(self): self.scene.sensors["height_scanner_critic"] = self._height_scanner_critic

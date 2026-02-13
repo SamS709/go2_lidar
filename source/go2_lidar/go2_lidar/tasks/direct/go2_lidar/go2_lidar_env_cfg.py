@@ -35,7 +35,7 @@ class CommandsCfg:
         heading_command=False,
         debug_vis=False,
         ranges=mdp.UniformVelocityCommandCfg.Ranges(
-            lin_vel_x=(0.5, 1.0), lin_vel_y=(-0.5, 0.5), ang_vel_z=(-0.5, 0.5)
+            lin_vel_x=(0.0, 1.0), lin_vel_y=(-0.5, 0.5), ang_vel_z=(-0.5, 0.5)
         ),
     )
 
@@ -105,7 +105,7 @@ class EventCfg:
         func=mdp.push_by_setting_velocity,
         mode="interval",
         interval_range_s=(10.0, 15.0),
-        params={"velocity_range": {"x": (-0.5, 0.5), "y": (-0.5, 0.5)}},
+        params={"velocity_range": {"x": (-0.3, 0.3), "y": (-0.3, 0.3)}},
     )
 
 
@@ -176,14 +176,19 @@ class Go2LidarFlatEnvCfg(DirectRLEnvCfg):
     joint_accel_reward_scale = -2.5e-7
     action_rate_reward_scale = -0.01
     feet_air_time_reward_scale = 0.01
-    undesired_contact_reward_scale = -1.0
-    flat_orientation_reward_scale = -5.0
+    undesired_contact_reward_scale = 0.0
+    flat_orientation_reward_scale = 0.0
+    velocity_threshold = 0.3
+    def_pos_reward_scale = -0.01
+    stand_still_scale = 5.0
 
 
 @configclass
 class Go2LidarRoughEnvCfg(Go2LidarFlatEnvCfg):
     # env
     observation_space = 247
+    ROUGH_TERRAINS_CFG.num_cols = 3
+    ROUGH_TERRAINS_CFG.num_rows = 2
     ROUGH_TERRAINS_CFG.sub_terrains["boxes"].grid_height_range = (0.025, 0.1)
     ROUGH_TERRAINS_CFG.sub_terrains["random_rough"].noise_range = (0.01, 0.06)
     ROUGH_TERRAINS_CFG.sub_terrains["random_rough"].noise_step = 0.01
@@ -205,17 +210,7 @@ class Go2LidarRoughEnvCfg(Go2LidarFlatEnvCfg):
         ),
         debug_vis=False,
     )
-
-    # # we add a height scanner for perceptive locomotion
-    height_scanner_critic = RayCasterCfg(
-        prim_path="/World/envs/env_.*/Robot/base",
-        offset=RayCasterCfg.OffsetCfg(pos=(0.0, 0.0, 20.0)),
-        ray_alignment="yaw",
-        pattern_cfg=patterns.GridPatternCfg(resolution=0.1, size=[1.6, 1.0]),
-        debug_vis=False,
-        mesh_prim_paths=["/World/ground"],
-    )
-    # Heightmap configuration
+     # Heightmap configuration
     height_map_dist = 1.0
     res = 6  # resolution of the heightmap (cells per meter)
     height_map_cells = int(2 * height_map_dist * res) ** 2  
@@ -241,6 +236,18 @@ class Go2LidarRoughEnvCfg(Go2LidarFlatEnvCfg):
         max_distance=lidar_range,
         debug_vis=False,
     )
+
+    # # we add a height scanner for perceptive locomotion
+    height_scanner_critic = RayCasterCfg(
+        prim_path="/World/envs/env_.*/Robot/base",
+        offset=RayCasterCfg.OffsetCfg(pos=(0.0, 0.0, 20.0)),
+        ray_alignment="yaw",
+        pattern_cfg=patterns.GridPatternCfg(resolution=0.1, size=[1.6, 1.0]),
+        debug_vis=False,
+        mesh_prim_paths=["/World/ground"],
+    )
+   
+    
 
     # reward scales (override from flat config)
     flat_orientation_reward_scale = 0.0
