@@ -92,17 +92,17 @@ class RaycasterSensorSceneCfg(InteractiveSceneCfg):
         #     border_width=1.0,
         #     holes=False,
         # ),
-        "pyramid_stairs_inv": terrain_gen.MeshInvertedPyramidStairsTerrainCfg(
-            proportion=0.2,
-            step_height_range=(0.05, 0.23),
-            step_width=0.3,
-            platform_width=3.0,
-            border_width=1.0,
-            holes=False,
-        ),
-        # "boxes": terrain_gen.MeshRandomGridTerrainCfg(
-        #     proportion=0.2, grid_width=0.45, grid_height_range=(0.05, 0.2), platform_width=2.0
+        # "pyramid_stairs_inv": terrain_gen.MeshInvertedPyramidStairsTerrainCfg(
+        #     proportion=0.2,
+        #     step_height_range=(0.05, 0.23),
+        #     step_width=0.3,
+        #     platform_width=3.0,
+        #     border_width=1.0,
+        #     holes=False,
         # ),
+        "boxes": terrain_gen.MeshRandomGridTerrainCfg(
+            proportion=0.2, grid_width=0.45, grid_height_range=(0.05, 0.2), platform_width=2.0
+        ),
         # "random_rough": terrain_gen.HfRandomUniformTerrainCfg(
         #     proportion=0.2, noise_range=(0.02, 0.10), noise_step=0.02, border_width=0.25
         # ),
@@ -142,9 +142,9 @@ class RaycasterSensorSceneCfg(InteractiveSceneCfg):
     '''
     ray_caster = RayCasterCfg(
         prim_path="/World/envs/env_.*/Robot/base",
-        offset=RayCasterCfg.OffsetCfg(pos=(0.28945, 0.0, -0.04682)),
+        offset=RayCasterCfg.OffsetCfg(pos=(0.28945 + 0.25, 0.0, -0.04682)),
         ray_alignment="yaw",
-        pattern_cfg=patterns.GridPatternCfg(resolution=0.1, size=[1.9, 0.9], ordering = "yx"),
+        pattern_cfg=patterns.GridPatternCfg(resolution=0.1, size=[1.4, 0.9], ordering = "yx"),
         debug_vis=True,
         mesh_prim_paths=["/World/ground"],
     )
@@ -188,10 +188,10 @@ def run_simulator(sim: sim_utils.SimulationContext, scene: InteractiveScene):
             root_state = scene["robot"].data.default_root_state.clone()
             root_state[:, :3] += scene.env_origins
             
-            # root_state[:, 1] -= 4.2
+            root_state[:, 1] -= 4.2
             # root_state[:, 1] -= 10.25
             
-            # root_state[:, 0] += 0.7
+            root_state[:, 0] += 0.7
             scene["robot"].write_root_pose_to_sim(root_state[:, :7])
             scene["robot"].write_root_velocity_to_sim(root_state[:, 7:])
             # set joint positions with some noise
@@ -225,10 +225,10 @@ def run_simulator(sim: sim_utils.SimulationContext, scene: InteractiveScene):
         #   - "RR_calf_joint"
 
         targets = scene["robot"].data.default_joint_pos.clone()
-        targets[:,4] += 1.0 * torch.sin(torch.tensor(3 * sim_time))
-        targets[:,5] += 1.0 * torch.sin(torch.tensor(3 * sim_time))
-        targets[:,8] -= 1.0 * torch.sin(torch.tensor(3 * sim_time))
-        targets[:,9] -= 1.0 * torch.sin(torch.tensor(3 * sim_time))
+        # targets[:,4] += 1.0 * torch.sin(torch.tensor(3 * sim_time))
+        # targets[:,5] += 1.0 * torch.sin(torch.tensor(3 * sim_time))
+        # targets[:,8] -= 1.0 * torch.sin(torch.tensor(3 * sim_time))
+        # targets[:,9] -= 1.0 * torch.sin(torch.tensor(3 * sim_time))
         
         # print("pos: ", scene["robot"].data.default_joint_pos.clone())        
         scene["robot"].set_joint_position_target(targets)
@@ -242,13 +242,24 @@ def run_simulator(sim: sim_utils.SimulationContext, scene: InteractiveScene):
         print("-------------------------------")
         print("Robot base height (z):", scene["robot"].data.root_pos_w[:, 2])
         # print(scene["ray_caster"])
+        n_rows_deleted = 5
         height_data = (
                 scene["ray_caster"].data.pos_w[:, 2].unsqueeze(1) - scene["ray_caster"].data.ray_hits_w[..., 2] - 0.28
-            ).reshape(args_cli.num_envs, 2*10, 1*10).flip(1,2)[:,:15,:] 
+            ).reshape(args_cli.num_envs, 15, 10).flip(1,2)
+        height_data_half = height_data[:, ::2, ::2]  
+        # height_data2 = (
+        #         scene["ray_caster"].data.pos_w[:, 2].unsqueeze(1) - scene["ray_caster"].data.ray_hits_w[..., 2] - 0.28
+        #     )[:, 10*n_rows_deleted:].reshape(args_cli.num_envs, 15, 1*10).flip(1,2)
+        # print(height_data-height_data2)
         x_data = (
                 scene["ray_caster"].data.pos_w[:, 0].unsqueeze(1) - scene["ray_caster"].data.ray_hits_w[..., 0] 
-            ).reshape(args_cli.num_envs, 2*10, 1*10).flip(1,2)# .clip(-1.0, 1.0)  
-        print(height_data)
+            ).reshape(args_cli.num_envs, 15, 10).flip(1,2)# .clip(-1.0, 1.0)  
+        x_data_half = x_data[:, ::2, ::2] 
+        y_data = (
+                scene["ray_caster"].data.pos_w[:, 1].unsqueeze(1) - scene["ray_caster"].data.ray_hits_w[..., 1] 
+            ).reshape(args_cli.num_envs, 15, 10).flip(1,2)# .clip(-1.0, 1.0)  
+        y_data_half = y_data[:, ::2, ::2] 
+        print(height_data_half)
         # rays[torch.isinf(rays)] = 0
         
         # # Transform rays from world frame to robot frame with offset correction

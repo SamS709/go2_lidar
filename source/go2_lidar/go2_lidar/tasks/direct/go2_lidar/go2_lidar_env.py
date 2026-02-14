@@ -152,27 +152,28 @@ class Go2LidarEnv(DirectRLEnv):
         return height_map.flatten(1)
     
     def _get_observations(self) -> dict:
-        
         height_data = None
+        height_data_actor = None
         if isinstance(self.cfg, Go2LidarRoughEnvCfg):
-            height_data = height_data = (
+            height_data = (
                 self._height_scanner.data.pos_w[:, 2].unsqueeze(1) - self._height_scanner.data.ray_hits_w[..., 2] - 0.28
-            ).reshape(self.num_envs, 2*10, 1*10).flip(1,2)[:,:15,:].flatten(1)
+            ).clip(-1.0, 1.0) #remove the rows at the back to match the real lidar that doesnt provide this info
+            height_data_actor = ((height_data.reshape(self.num_envs, 15, 10).flip(1, 2))[:, ::2, ::2]).flatten(1)
             # height_data = self._get_lidar_obs()
+            # torch.set_printoptions(precision=2, linewidth=1000, sci_mode=False)
+            # print(height_data.reshape(self.num_envs, 15, 10).flip(1, 2))
         foot_contacts = (torch.norm(self._contact_sensor.data.net_forces_w[:, self._feet_ids], dim=-1) > 1.0).float()
         # Extract yaw angle from quaternion and encode as sin/cos
         actor_obs = torch.cat(
             [
                 tensor
                 for tensor in (
-                    self._robot.data.root_lin_vel_b,
                     self._robot.data.root_ang_vel_b,
                     self._robot.data.projected_gravity_b,
                     self._commands.get_command("base_velocity"),
                     self._robot.data.joint_pos - self._robot.data.default_joint_pos,
                     self._robot.data.joint_vel,
-                    height_data,
-                    self._previous_actions,
+                    height_data_actor,
                     self._actions,
                 )
                 if tensor is not None
@@ -201,7 +202,7 @@ class Go2LidarEnv(DirectRLEnv):
         )
         observations = {"policy": actor_obs,
                         "critic": critic_obs}
-        self._previous_actions = self._actions.clone()
+        self._previous_actions = self._actions.clone()        
         return observations
 
     def _get_rewards(self) -> torch.Tensor:

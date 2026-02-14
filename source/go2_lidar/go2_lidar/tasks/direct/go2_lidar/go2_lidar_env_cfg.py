@@ -188,7 +188,7 @@ class Go2LidarRoughEnvCfg(Go2LidarFlatEnvCfg):
     # env
     observation_space = 247
     # ROUGH_TERRAINS_CFG.num_cols = 3
-    # ROUGH_TERRAINS_CFG.num_rows = 2
+    # ROUGH_TERRAINS_CFG.num_rows = 1
     ROUGH_TERRAINS_CFG.sub_terrains["boxes"].grid_height_range = (0.025, 0.1)
     ROUGH_TERRAINS_CFG.sub_terrains["random_rough"].noise_range = (0.01, 0.06)
     ROUGH_TERRAINS_CFG.sub_terrains["random_rough"].noise_step = 0.01
@@ -250,12 +250,15 @@ class Go2LidarRoughEnvCfg(Go2LidarFlatEnvCfg):
     # )
 
     # Pre-computed quaternion (w, x, y, z) from euler angles (-pi, pi - 2.8782, -pi)
+
     lidar_rotation = (1.3132e-01, 3.7593e-08, 9.9134e-01, 3.7593e-08)
+    # the heightmap is 1.5 * 1, offseted by lidar offset + 0.25 on x such that it detects 1 metter above lidar and 0.5 meters behind
     height_scanner = RayCasterCfg(
+        update_period=1 / 20,
         prim_path="/World/envs/env_.*/Robot/base",
-        offset=RayCasterCfg.OffsetCfg(pos=(0.28945, 0.0, -0.04682)),
+        offset=RayCasterCfg.OffsetCfg(pos=(0.28945 + 0.25, 0.0, -0.04682)),
         ray_alignment="yaw",
-        pattern_cfg=patterns.GridPatternCfg(resolution=0.1, size=[1.9, 0.9], ordering = "yx"),
+        pattern_cfg=patterns.GridPatternCfg(resolution=0.1, size=[1.4, 0.9], ordering = "yx"),
         debug_vis=False,
         mesh_prim_paths=["/World/ground"],
     )

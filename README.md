@@ -80,5 +80,11 @@ Make sure you are in your the classic Isaac Lab Python environment (not the Newt
 
 ## 2) Sim2Sim
 
+The problem for the sim2sim including a lidar is that there is no other sim providing Lidars.
+
+Then, I will just try the trained policies on flat terrains with a mock height_map.
+
+This mock height map is built this way (with offset = 0.28 fixed at training time): 
+height_map = torch.zeros(x_length, y_length) - offset + robot_base_height
 
 

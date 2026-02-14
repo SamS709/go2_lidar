@@ -273,3 +273,265 @@ RESULTS:
 
 NOT WORKING... because the height data for the critic wasn't attahed to the robot. 
 To attach it, i just added this line in go2_lidar_env.py in _setup_scene(self): self.scene.sensors["height_scanner_critic"] = self._height_scanner_critic
+
+
+4.
+
+###########################################################################################################################################################
+###########################################################################################################################################################
+log: logs/rsl_rl/go2-lidar/2026-02-13_19-02-22
+
+REWARDS:  
+###########################################################################################################################################################
+
+    ADDED DEF POS REWARD
+    lin_vel_reward_scale = 1.5
+    yaw_rate_reward_scale = 0.75
+    z_vel_reward_scale = -2.0
+    ang_vel_reward_scale = -0.05
+    joint_torque_reward_scale = -2.0e-4
+    joint_accel_reward_scale = -2.5e-7
+    action_rate_reward_scale = -0.01
+    feet_air_time_reward_scale = 0.01
+    undesired_contact_reward_scale = 0.0
+    flat_orientation_reward_scale = 0.0
+    velocity_threshold = 0.3
+    def_pos_reward_scale = -0.01
+    stand_still_scale = 5.0
+
+
+COMMANDS:
+###########################################################################################################################################################
+
+    lin_vel_x=(0.5, 1.0), lin_vel_y=(-0.5, 0.5), ang_vel_z=(-0.5, 0.5)
+
+RANDOMIZATION:
+###########################################################################################################################################################
+
+    SAME
+
+OBSERVATIONS:
+###########################################################################################################################################################
+
+    Different obs for actor and critic
+
+    CHANGED LIDAR OBS: 
+
+    height_scanner = RayCasterCfg(
+        update_period=1 / 20,
+        prim_path="/World/envs/env_.*/Robot/base",
+        offset=RayCasterCfg.OffsetCfg(pos=(0.28945, 0.0, -0.04682)),
+        ray_alignment="yaw",
+        pattern_cfg=patterns.GridPatternCfg(resolution=0.1, size=[1.9, 0.9], ordering = "yx"),
+        debug_vis=False,
+        mesh_prim_paths=["/World/ground"],
+    )
+
+    processing:
+    height_data = (
+                self._height_scanner.data.pos_w[:, 2].unsqueeze(1) - self._height_scanner.data.ray_hits_w[..., 2] - 0.28
+            ).clip(-1.0, 1.0)[:,50:] # throw the last 50 data away
+
+    actor_obs = torch.cat(
+            [
+                tensor
+                for tensor in (
+                    self._robot.data.root_lin_vel_b,
+                    self._robot.data.root_ang_vel_b,
+                    self._robot.data.projected_gravity_b,
+                    self._commands.get_command("base_velocity"),
+                    self._robot.data.joint_pos - self._robot.data.default_joint_pos,
+                    self._robot.data.joint_vel,
+                    height_data,
+                    self._previous_actions,
+                    self._actions,
+                )
+                if tensor is not None
+            ],
+            dim=-1,
+        )
+        
+        critic_obs = torch.cat(
+            [
+                tensor
+                for tensor in (
+                    self._robot.data.root_lin_vel_b,
+                    self._robot.data.root_ang_vel_b,
+                    self._robot.data.projected_gravity_b,
+                    self._commands.get_command("base_velocity"),
+                    self._robot.data.joint_pos - self._robot.data.default_joint_pos,
+                    self._robot.data.joint_vel,
+                    foot_contacts,
+                    height_data,
+                    self._previous_actions,
+                    self._actions,
+                )
+                if tensor is not None
+            ],
+            dim=-1,
+        )
+
+
+RESULTS:
+###########################################################################################################################################################
+
+WORKS VERY WELL (see tensorboard for the final res): 
+
+
+
+5.
+
+###########################################################################################################################################################
+###########################################################################################################################################################
+log: logs/rsl_rl/go2-lidar/2026-02-14_12-25-38
+
+The only real changed is the delete of base_vel in actor obs vector
+
+REWARDS:  
+###########################################################################################################################################################
+
+   SAME
+
+
+COMMANDS:
+###########################################################################################################################################################
+
+    SAME
+
+RANDOMIZATION:
+###########################################################################################################################################################
+
+    SAME
+
+OBSERVATIONS:
+###########################################################################################################################################################
+
+    Different obs for actor and critic
+
+    CHANGED LIDAR OBS (but the result is the same: instead of processing by cropping the heightdata,
+    i crop in the configuration by sampling less points and translateing the heightmap): 
+
+
+    REMOVED base_vel of actor obs
+    REMOVED prev_actions from actor obs: this was two steps before, we only need actions that ere one step before for the actor
+
+    height_scanner = RayCasterCfg(
+        update_period=1 / 20,
+        prim_path="/World/envs/env_.*/Robot/base",
+        offset=RayCasterCfg.OffsetCfg(pos=(0.28945 + 0.25, 0.0, -0.04682)),
+        ray_alignment="yaw",
+        pattern_cfg=patterns.GridPatternCfg(resolution=0.1, size=[1.4, 0.9], ordering = "yx"),
+        debug_vis=False,
+        mesh_prim_paths=["/World/ground"],
+    )
+
+    actor_obs = torch.cat(
+            [
+                tensor
+                for tensor in (
+                    self._robot.data.root_ang_vel_b,
+                    self._robot.data.projected_gravity_b,
+                    self._commands.get_command("base_velocity"),
+                    self._robot.data.joint_pos - self._robot.data.default_joint_pos,
+                    self._robot.data.joint_vel,
+                    height_data,
+                    self._actions,
+                )
+                if tensor is not None
+            ],
+            dim=-1,
+        )
+        
+        critic_obs = torch.cat(
+            [
+                tensor
+                for tensor in (
+                    self._robot.data.root_lin_vel_b,
+                    self._robot.data.root_ang_vel_b,
+                    self._robot.data.projected_gravity_b,
+                    self._commands.get_command("base_velocity"),
+                    self._robot.data.joint_pos - self._robot.data.default_joint_pos,
+                    self._robot.data.joint_vel,
+                    foot_contacts,
+                    height_data,
+                    self._previous_actions,
+                    self._actions,
+                )
+                if tensor is not None
+            ],
+            dim=-1,
+        )
+
+
+RESULTS:
+###########################################################################################################################################################
+
+Works really great, just like before
+
+
+6.
+
+###########################################################################################################################################################
+###########################################################################################################################################################
+log: logs/rsl_rl/go2-lidar/?????
+
+CHANGE: actor height map has lower res
+
+REWARDS:  
+###########################################################################################################################################################
+
+   SAME
+
+
+COMMANDS:
+###########################################################################################################################################################
+
+    SAME
+
+RANDOMIZATION:
+###########################################################################################################################################################
+
+    SAME
+
+OBSERVATIONS:
+###########################################################################################################################################################
+
+    Actor has less info in its height data (one row and col over2: shape = [8, 5])
+
+    height_scanner = SAME
+
+    height_data = (
+                self._height_scanner.data.pos_w[:, 2].unsqueeze(1) - self._height_scanner.data.ray_hits_w[..., 2] - 0.28
+            ).clip(-1.0, 1.0) #remove the rows at the back to match the real lidar that doesnt provide this info
+    height_data_actor = ((height_data.reshape(self.num_envs, 15, 10).flip(1, 2))[:, ::2, ::2]).flatten(1)
+
+    actor_obs = torch.cat(
+            [
+                tensor
+                for tensor in (
+                    self._robot.data.root_ang_vel_b,
+                    self._robot.data.projected_gravity_b,
+                    self._commands.get_command("base_velocity"),
+                    self._robot.data.joint_pos - self._robot.data.default_joint_pos,
+                    self._robot.data.joint_vel,
+                    height_data_actor,
+                    self._actions,
+                )
+                if tensor is not None
+            ],
+            dim=-1,
+        )
+        
+        critic_obs = SAME
+RESULTS:
+###########################################################################################################################################################
+
+Works really great, just like before
+
+Idées: résolution moins élevée poir l'actor (height_map)
+
+7.
+
+Idées: Ajouter du random sur les obs (en premier heightmap) de l'actor
+
+
