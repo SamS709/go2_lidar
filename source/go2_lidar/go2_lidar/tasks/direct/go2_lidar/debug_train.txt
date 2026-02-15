@@ -473,7 +473,7 @@ Works really great, just like before
 
 ###########################################################################################################################################################
 ###########################################################################################################################################################
-log: logs/rsl_rl/go2-lidar/?????
+log: logs/rsl_rl/go2-lidar/2026-02-15_10-26-42
 
 CHANGE: actor height map has lower res
 
@@ -526,12 +526,108 @@ OBSERVATIONS:
 RESULTS:
 ###########################################################################################################################################################
 
-Works really great, just like before
+Works well but, jumps like a rabbit.
+2 solutions:
+    1) negative reward for feet variance.
+    2) increase a little bit the resolution ([8, 5] might not be enough)
+    3) Go back to previous heightmap for the actor, but processing it to remove informations 
+       from it following this process: create an inverted gaussian centered at the middle of the heightmap. 
+       sample points according to this 2D gaussian to set N (from 50 to 70, N is random thanks to replacement = True) 
+       points of the heightmap to zero.
+       The hyperparameters are sigma = 4, N = 90, h = 15, w = 10 (h and w are the height and width of the heightmap)
 
+
+1) Implementation:
+
+# Extract individual foot timings
+last_air_time = self._contact_sensor.data.last_air_time[:, self._feet_ids]
+last_contact_time = self._contact_sensor.data.last_contact_time[:, self._feet_ids]
+
+fl_air = last_air_time[:, self._fl_id]
+br_air = last_air_time[:, self._br_id]
+fr_air = last_air_time[:, self._fr_id]
+bl_air = last_air_time[:, self._bl_id]
+
+fl_contact = last_contact_time[:, self._fl_id]
+br_contact = last_contact_time[:, self._br_id]
+fr_contact = last_contact_time[:, self._fr_id]
+bl_contact = last_contact_time[:, self._bl_id]
+
+# Reward diagonal pairs being synchronized in BOTH air and contact phases
+diagonal_pair1_sync = torch.square(fl_air - br_air) + torch.square(fl_contact - br_contact)
+diagonal_pair2_sync = torch.square(fr_air - bl_air) + torch.square(fr_contact - bl_contact)
+
+# Phase opposition between the two pairs
+pair1_avg_air = (fl_air + br_air) / 2
+pair2_avg_air = (fr_air + bl_air) / 2
+phase_opposition = torch.abs(pair1_avg_air - pair2_avg_air)
+
+# Combined reward
+diagonal_sync = -(diagonal_pair1_sync + diagonal_pair2_sync) + phase_opposition
 Idées: résolution moins élevée poir l'actor (height_map)
+
+
 
 7.
 
-Idées: Ajouter du random sur les obs (en premier heightmap) de l'actor
+###########################################################################################################################################################
+###########################################################################################################################################################
+log: logs/rsl_rl/go2-lidar/2026-02-1??????????????
+
+KEY CHANGE: go back to previous heightmap shape for actor (15, 10), but seting N sampled in (50, 70) values of it to zero.
+
+REWARDS:  
+###########################################################################################################################################################
+
+   SAME
+
+
+COMMANDS:
+###########################################################################################################################################################
+
+    SAME
+
+RANDOMIZATION:
+###########################################################################################################################################################
+
+    SAME
+
+OBSERVATIONS:
+###########################################################################################################################################################
+
+    Actor has less info in its height data (same shape but some cells set to zero)
+    cells set to zero are sampled from a 2d gaussian grid that gives a proba to be set to zero
+    -> inverted gaussian: the closer we are to the border, the higher the proba to be set to zero.
+
+    height_scanner = SAME
+
+    def _process_heightmap(self, height_map):
+        sampled_indices = torch.multinomial(self.gaussian_prob_heightmap, self.cfg.n_zeros, replacement=True)
+        height_map_actor = height_map.clone()
+        height_map_actor[:, sampled_indices] = 0.0
+        return height_map_actor
+
+    height_data_actor = self._process_heightmap(height_data)
+
+    actor_obs = torch.cat(
+            [
+                tensor
+                for tensor in (
+                    self._robot.data.root_ang_vel_b,
+                    self._robot.data.projected_gravity_b,
+                    self._commands.get_command("base_velocity"),
+                    self._robot.data.joint_pos - self._robot.data.default_joint_pos,
+                    self._robot.data.joint_vel,
+                    height_data_actor,
+                    self._actions,
+                )
+                if tensor is not None
+            ],
+            dim=-1,
+        )
+        
+        critic_obs = SAME
+RESULTS:
+###########################################################################################################################################################
 
 

@@ -1,0 +1,30 @@
+[flake8]
+# Ignore common flake8 errors and warnings
+ignore = 
+    E501,  # line too long
+    E203,  # whitespace before ':'
+    E266,  # too many leading '#' for block comment
+    W503,  # line break before binary operator
+    W504,  # line break after binary operator
+    F401,  # imported but unused
+    F403,  # 'from module import *' used
+    F811,  # redefinition of unused name
+
+# Exclude common directories
+exclude = 
+    .git,
+    __pycache__,
+    .venv,
+    venv,
+    env,
+    .pytest_cache,
+    .egg-info,
+    build,
+    dist,
+    .vscode,
+    node_modules,
+    logs,
+    outputs
+
+# Maximum line length
+max-line-length = 120

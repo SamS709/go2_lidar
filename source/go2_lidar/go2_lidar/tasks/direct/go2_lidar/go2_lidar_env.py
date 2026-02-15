@@ -27,6 +27,8 @@ class Go2LidarEnv(DirectRLEnv):
     def __init__(self, cfg: Go2LidarFlatEnvCfg | Go2LidarRoughEnvCfg, render_mode: str | None = None, **kwargs):
         super().__init__(cfg, render_mode, **kwargs)
 
+        
+
         # Joint position command (deviation from default joint positions)
         self._actions = torch.zeros(self.num_envs, gym.spaces.flatdim(self.single_action_space), device=self.device)
         self._previous_actions = torch.zeros(
@@ -58,6 +60,23 @@ class Go2LidarEnv(DirectRLEnv):
         self._feet_ids, _ = self._contact_sensor.find_bodies(".*_foot")
         self._undesired_contact_body_ids, _ = self._contact_sensor.find_bodies(".*_thigh")
 
+    def create_gaussian_heightmap(self, h, w):
+        y = torch.arange(h, device=self.device, dtype=torch.float32)
+        x = torch.arange(w, device=self.device, dtype=torch.float32)
+        yy, xx = torch.meshgrid(y, x, indexing='ij')
+        
+        # Center of the grid
+        cy = (h - 1) / 2.0
+        cx = (w - 1) / 2.0
+        
+        # Compute 2D Gaussian
+        gaussian_dist = torch.exp(((xx - cx)**2 + (yy - cy)**2) / (2 * self.cfg.sigma**2))
+        
+        # Normalize to create probability distribution
+        gaussian_prob = gaussian_dist / gaussian_dist.sum()
+        self.gaussian_prob_heightmap  = gaussian_prob.flatten()
+        
+
     def _setup_scene(self):
         self._robot = Articulation(self.cfg.robot)
         self.scene.articulations["robot"] = self._robot
@@ -69,6 +88,7 @@ class Go2LidarEnv(DirectRLEnv):
             # self._height_scanner_critic = RayCaster(self.cfg.height_scanner_critic)
             self.scene.sensors["height_scanner"] = self._height_scanner
             # self.scene.sensors["height_scanner_critic"] = self._height_scanner_critic
+            self.create_gaussian_heightmap(15, 10)
 
         self.cfg.terrain.num_envs = self.scene.cfg.num_envs
         self.cfg.terrain.env_spacing = self.scene.cfg.env_spacing
@@ -151,6 +171,12 @@ class Go2LidarEnv(DirectRLEnv):
         
         return height_map.flatten(1)
     
+    def _process_heightmap(self, height_map):
+        sampled_indices = torch.multinomial(self.gaussian_prob_heightmap, self.cfg.n_zeros, replacement=True)
+        height_map_actor = height_map.clone()
+        height_map_actor[:, sampled_indices] = 0.0
+        return height_map_actor
+    
     def _get_observations(self) -> dict:
         height_data = None
         height_data_actor = None
@@ -158,10 +184,11 @@ class Go2LidarEnv(DirectRLEnv):
             height_data = (
                 self._height_scanner.data.pos_w[:, 2].unsqueeze(1) - self._height_scanner.data.ray_hits_w[..., 2] - 0.28
             ).clip(-1.0, 1.0) #remove the rows at the back to match the real lidar that doesnt provide this info
-            height_data_actor = ((height_data.reshape(self.num_envs, 15, 10).flip(1, 2))[:, ::2, ::2]).flatten(1)
+            height_data_actor = self._process_heightmap(height_data)
             # height_data = self._get_lidar_obs()
             # torch.set_printoptions(precision=2, linewidth=1000, sci_mode=False)
-            # print(height_data.reshape(self.num_envs, 15, 10).flip(1, 2))
+            # print(height_data_actor.reshape(self.num_envs, 15, 10).flip(1, 2))
+            # print(torch.sum(height_data_actor==0.0))
         foot_contacts = (torch.norm(self._contact_sensor.data.net_forces_w[:, self._feet_ids], dim=-1) > 1.0).float()
         # Extract yaw angle from quaternion and encode as sin/cos
         actor_obs = torch.cat(

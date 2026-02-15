@@ -252,6 +252,8 @@ class Go2LidarRoughEnvCfg(Go2LidarFlatEnvCfg):
     # Pre-computed quaternion (w, x, y, z) from euler angles (-pi, pi - 2.8782, -pi)
 
     lidar_rotation = (1.3132e-01, 3.7593e-08, 9.9134e-01, 3.7593e-08)
+    sigma = 4.0
+    n_zeros = 90
     # the heightmap is 1.5 * 1, offseted by lidar offset + 0.25 on x such that it detects 1 metter above lidar and 0.5 meters behind
     height_scanner = RayCasterCfg(
         update_period=1 / 20,

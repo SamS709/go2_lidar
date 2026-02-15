@@ -143,6 +143,7 @@ class RaycasterSensorSceneCfg(InteractiveSceneCfg):
     ray_caster = RayCasterCfg(
         prim_path="/World/envs/env_.*/Robot/base",
         offset=RayCasterCfg.OffsetCfg(pos=(0.28945 + 0.25, 0.0, -0.04682)),
+        update_period=1/20,
         ray_alignment="yaw",
         pattern_cfg=patterns.GridPatternCfg(resolution=0.1, size=[1.4, 0.9], ordering = "yx"),
         debug_vis=True,
@@ -163,6 +164,61 @@ class RaycasterSensorSceneCfg(InteractiveSceneCfg):
     #     max_distance= MAX_RAY_DIST * 2.0 ,
     #     debug_vis=not args_cli.headless,
     # )
+
+
+# Precompute Gaussian probability grid (since h=15, w=10 are fixed)
+_gaussian_prob_cache = {}
+
+def _compute_gaussian_prob(h: int, w: int, sigma: float, device) -> torch.Tensor:
+    """Compute and cache Gaussian probability distribution."""
+    cache_key = (h, w, sigma, device)
+    if cache_key not in _gaussian_prob_cache:
+        # Create coordinate grids (grid indices)
+        y = torch.arange(h, device=device, dtype=torch.float32)
+        x = torch.arange(w, device=device, dtype=torch.float32)
+        yy, xx = torch.meshgrid(y, x, indexing='ij')
+        
+        # Center of the grid
+        cy = (h - 1) / 2.0
+        cx = (w - 1) / 2.0
+        
+        # Compute 2D Gaussian
+        gaussian_dist = torch.exp(((xx - cx)**2 + (yy - cy)**2) / (2 * sigma**2))
+        
+        # Normalize to create probability distribution
+        gaussian_prob = gaussian_dist / gaussian_dist.sum()
+        _gaussian_prob_cache[cache_key] = gaussian_prob.flatten()
+    
+    return _gaussian_prob_cache[cache_key]
+
+
+def sample_gaussian_and_zero_heightmap(heightmap: torch.Tensor, sigma: float, N: int) -> torch.Tensor:
+    """
+    Sample points in a flattened heightmap following a 2D Gaussian distribution centered in the middle,
+    and set those sampled points to zero.
+    
+    Args:
+        heightmap: Tensor of shape (num_envs, height*width) - flattened heightmap
+        sigma: Standard deviation of the Gaussian distribution
+        N: Number of points to sample following the Gaussian distribution
+    
+    Returns:
+        Modified heightmap with N sampled points set to zero
+    """
+    num_envs, length = heightmap.shape
+    h, w = 15, 10  # Fixed heightmap dimensions
+    device = heightmap.device
+    
+    # Get cached Gaussian probability distribution
+    flat_prob = _compute_gaussian_prob(h, w, sigma, device)
+    
+    # Sample N indices once (same for all environments)
+    sampled_indices = torch.multinomial(flat_prob, N, replacement=True)
+    
+    # Apply the same sampling to all environments (vectorized)
+    heightmap[:, sampled_indices] = 0.0
+    
+    return heightmap
 
 
 def run_simulator(sim: sim_utils.SimulationContext, scene: InteractiveScene):
@@ -244,9 +300,13 @@ def run_simulator(sim: sim_utils.SimulationContext, scene: InteractiveScene):
         # print(scene["ray_caster"])
         n_rows_deleted = 5
         height_data = (
-                scene["ray_caster"].data.pos_w[:, 2].unsqueeze(1) - scene["ray_caster"].data.ray_hits_w[..., 2] - 0.28
-            ).reshape(args_cli.num_envs, 15, 10).flip(1,2)
-        height_data_half = height_data[:, ::2, ::2]  
+                scene["ray_caster"].data.pos_w[:, 2].unsqueeze(1) - scene["ray_caster"].data.ray_hits_w[..., 2]# - 0.28
+            )
+        
+
+        sample_gaussian_and_zero_heightmap(heightmap=height_data, sigma= 4.0, N = 90)
+        height_data = height_data.reshape(args_cli.num_envs, 15, 10).flip(1,2)
+        # height_data_half =  
         # height_data2 = (
         #         scene["ray_caster"].data.pos_w[:, 2].unsqueeze(1) - scene["ray_caster"].data.ray_hits_w[..., 2] - 0.28
         #     )[:, 10*n_rows_deleted:].reshape(args_cli.num_envs, 15, 1*10).flip(1,2)
@@ -254,12 +314,13 @@ def run_simulator(sim: sim_utils.SimulationContext, scene: InteractiveScene):
         x_data = (
                 scene["ray_caster"].data.pos_w[:, 0].unsqueeze(1) - scene["ray_caster"].data.ray_hits_w[..., 0] 
             ).reshape(args_cli.num_envs, 15, 10).flip(1,2)# .clip(-1.0, 1.0)  
-        x_data_half = x_data[:, ::2, ::2] 
+        # x_data_half = x_data[:, ::2, ::2] 
         y_data = (
                 scene["ray_caster"].data.pos_w[:, 1].unsqueeze(1) - scene["ray_caster"].data.ray_hits_w[..., 1] 
-            ).reshape(args_cli.num_envs, 15, 10).flip(1,2)# .clip(-1.0, 1.0)  
-        y_data_half = y_data[:, ::2, ::2] 
-        print(height_data_half)
+            )#.reshape(args_cli.num_envs, 15, 10).flip(1,2)# .clip(-1.0, 1.0)  
+        # y_data_half = y_data[:, ::2, ::2] 
+        print(height_data)
+        print(torch.sum(height_data == 0.0))
         # rays[torch.isinf(rays)] = 0
         
         # # Transform rays from world frame to robot frame with offset correction
