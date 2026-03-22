@@ -21,7 +21,9 @@ from isaaclab.utils import configclass
 ##
 from isaaclab_assets.robots.unitree import UNITREE_GO2_CFG  # isort: skip
 from isaaclab.terrains.config.rough import ROUGH_TERRAINS_CFG  # isort: skip
+import isaaclab.terrains as terrain_gen
 
+from isaaclab.terrains.terrain_generator_cfg import TerrainGeneratorCfg
 
 
 @configclass
@@ -32,12 +34,15 @@ class CommandsCfg:
         asset_name="robot",
         resampling_time_range=(10.0, 10.0),
         rel_standing_envs=0.02,
-        heading_command=False,
+        heading_command=True,
+        heading_control_stiffness=0.5,
         debug_vis=False,
         ranges=mdp.UniformVelocityCommandCfg.Ranges(
-            lin_vel_x=(0.0, 1.0), lin_vel_y=(-0.5, 0.5), ang_vel_z=(-0.5, 0.5)
+            lin_vel_x=(0.0, 1.0), lin_vel_y=(-0.5, 0.5), ang_vel_z=(-1.0, 1.0), heading=(-3.14, 3.14)
         ),
     )
+    
+    
 
 @configclass
 class EventCfg:
@@ -49,9 +54,9 @@ class EventCfg:
         mode="startup",
         params={
             "asset_cfg": SceneEntityCfg("robot", body_names=".*"),
-            "static_friction_range": (0.8, 0.8),
-            "dynamic_friction_range": (0.6, 0.6),
-            "restitution_range": (0.0, 0.0),
+            "static_friction_range": (0.3, 1.2),
+            "dynamic_friction_range": (0.3, 1.2),
+            "restitution_range": (0.0, 0.15),
             "num_buckets": 64,
         },
     )
@@ -96,7 +101,7 @@ class EventCfg:
         mode="reset",
         params={
             "position_range": (0.9, 1.1),
-            "velocity_range": (0.0, 0.0),
+            "velocity_range": (-1.0, 1.0),
         },
     )
 
@@ -104,8 +109,8 @@ class EventCfg:
     push_robot = EventTerm(
         func=mdp.push_by_setting_velocity,
         mode="interval",
-        interval_range_s=(10.0, 15.0),
-        params={"velocity_range": {"x": (-0.3, 0.3), "y": (-0.3, 0.3)}},
+        interval_range_s=(5.0, 10.0),
+        params={"velocity_range": {"x": (-0.5, 0.5), "y": (-0.5, 0.5)}},
     )
 
 
@@ -167,19 +172,21 @@ class Go2LidarFlatEnvCfg(DirectRLEnvCfg):
         prim_path="/World/envs/env_.*/Robot/.*", history_length=3, update_period=0.005, track_air_time=True
     )
 
+    randomize = True
+
     # reward scales
     lin_vel_reward_scale = 1.5
-    yaw_rate_reward_scale = 0.75
-    z_vel_reward_scale = -2.0
+    yaw_rate_reward_scale = 0.5
+    z_vel_reward_scale = -0.5
     ang_vel_reward_scale = -0.05
     joint_torque_reward_scale = -2.0e-4
     joint_accel_reward_scale = -2.5e-7
     action_rate_reward_scale = -0.01
     feet_air_time_reward_scale = 0.01
-    undesired_contact_reward_scale = 0.0
+    undesired_contact_reward_scale = -1.0
     flat_orientation_reward_scale = 0.0
     velocity_threshold = 0.3
-    def_pos_reward_scale = -0.01
+    def_pos_reward_scale = -0.001
     stand_still_scale = 5.0
 
 
@@ -187,11 +194,45 @@ class Go2LidarFlatEnvCfg(DirectRLEnvCfg):
 class Go2LidarRoughEnvCfg(Go2LidarFlatEnvCfg):
     # env
     observation_space = 247
+    
+    TERRAINS_CFG = TerrainGeneratorCfg(
+        size=(8.0, 8.0),
+        border_width=20.0,
+        num_rows=2,
+        num_cols=4,
+        horizontal_scale=0.1,
+        vertical_scale=0.005,
+        slope_threshold=0.75,
+        use_cache=False,
+        sub_terrains={
+            "random_rough": terrain_gen.HfRandomUniformTerrainCfg(
+                proportion=0.2, noise_range=(0.01, 0.06), noise_step=0.01, border_width=0.25
+            ),
+            "pyramid_stairs": terrain_gen.MeshPyramidStairsTerrainCfg(
+                proportion=0.4,
+                step_height_range=(0.05, 0.15),
+                step_width=0.3,
+                platform_width=2.0,
+                border_width=1.0,
+                holes=False,
+            ),
+            "pyramid_stairs_inv": terrain_gen.MeshInvertedPyramidStairsTerrainCfg(
+                proportion=0.4,
+                step_height_range=(0.05, 0.15),
+                step_width=0.3,
+                platform_width=2.0,
+                border_width=1.0,
+                holes=False,
+            )
+        },
+    )
     # ROUGH_TERRAINS_CFG.num_cols = 3
-    # ROUGH_TERRAINS_CFG.num_rows = 1
-    ROUGH_TERRAINS_CFG.sub_terrains["boxes"].grid_height_range = (0.025, 0.1)
-    ROUGH_TERRAINS_CFG.sub_terrains["random_rough"].noise_range = (0.01, 0.06)
-    ROUGH_TERRAINS_CFG.sub_terrains["random_rough"].noise_step = 0.01
+    # ROUGH_TERRAINS_CFG.num_rows = 2
+    
+    # ROUGH_TERRAINS_CFG.sub_terrains["boxes"].grid_height_range = (0.025, 0.1)
+    # ROUGH_TERRAINS_CFG.sub_terrains["random_rough"].noise_range = (0.01, 0.06)
+    # ROUGH_TERRAINS_CFG.sub_terrains["random_rough"].noise_step = 0.01
+    
     terrain = TerrainImporterCfg(
         prim_path="/World/ground",
         terrain_type="generator",
@@ -251,10 +292,10 @@ class Go2LidarRoughEnvCfg(Go2LidarFlatEnvCfg):
 
     # Pre-computed quaternion (w, x, y, z) from euler angles (-pi, pi - 2.8782, -pi)
 
-    lidar_rotation = (1.3132e-01, 3.7593e-08, 9.9134e-01, 3.7593e-08)
-    sigma = 4.0
-    n_zeros = 90
+    sigma = 4.00
+    n_zeros = 30
     # the heightmap is 1.5 * 1, offseted by lidar offset + 0.25 on x such that it detects 1 metter above lidar and 0.5 meters behind
+    # on the real robot, from the lidar frame: grid 0.5 meters left and right and 1 meter front and 0.5 meters behind
     height_scanner = RayCasterCfg(
         update_period=1 / 20,
         prim_path="/World/envs/env_.*/Robot/base",

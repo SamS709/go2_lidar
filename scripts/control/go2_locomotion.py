@@ -58,11 +58,11 @@ from pxr import Gf, Sdf
 from rsl_rl.runners import OnPolicyRunner
 
 from isaaclab.utils.math import quat_apply
-from isaaclab.utils.pretrained_checkpoint import get_published_pretrained_checkpoint
+from isaaclab_rl.utils.pretrained_checkpoint import get_published_pretrained_checkpoint
 
 from isaaclab_rl.rsl_rl import RslRlBaseRunnerCfg, RslRlVecEnvWrapper
 
-from go2_lidar.tasks.direct.go2_lidar.go2_lidar_env_cfg import Go2LidarEnvCfg
+from go2_lidar.tasks.direct.go2_lidar.go2_lidar_env_cfg import Go2LidarRoughEnvCfg
 
 TASK = "Isaac-Velocity-Rough-Go2-Lidar-Direct-v0"
 RL_LIBRARY = "rsl_rl"
@@ -104,11 +104,10 @@ class Go2LidarDemo:
             print(f"[INFO] Loading pretrained checkpoint: {checkpoint}")
         
         # create environment configuration
-        env_cfg = Go2LidarEnvCfg()
+        env_cfg = Go2LidarRoughEnvCfg()
         env_cfg.scene.num_envs = 25
         env_cfg.episode_length_s = 1000000
         env_cfg.commands.base_velocity.ranges.lin_vel_x = (0.0, 1.0)
-        env_cfg.commands.base_pos.ranges.z_pos = (0.3, 0.3)  # Fixed height at 0.3m
         env_cfg.visualize = args_cli.visualize
         # Re-run post_init to update debug_vis based on visualize flag
         env_cfg.__post_init__()
@@ -254,7 +253,7 @@ def main():
             obs, _, _, _ = demo_go2.env.step(action)
             
             # Update observation with current commands (for policy input)
-            obs[:, 6:10] = demo_go2.commands
+            obs[:, 6:9] = demo_go2.commands
 
 
 if __name__ == "__main__":

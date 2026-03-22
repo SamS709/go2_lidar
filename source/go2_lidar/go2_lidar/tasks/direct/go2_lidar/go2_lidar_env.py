@@ -13,7 +13,7 @@ from isaaclab.assets import Articulation
 from isaaclab.envs import DirectRLEnv
 from isaaclab.sensors import ContactSensor, RayCaster
 from isaaclab.managers import CommandManager
-from isaaclab.utils.math import quat_conjugate, quat_apply
+from isaaclab.utils.math import quat_conjugate, quat_apply, quat_mul
 
 from .go2_lidar_env_cfg import Go2LidarFlatEnvCfg, Go2LidarRoughEnvCfg
 
@@ -58,7 +58,10 @@ class Go2LidarEnv(DirectRLEnv):
         # Get specific body indices
         self._base_id, _ = self._contact_sensor.find_bodies("base")
         self._feet_ids, _ = self._contact_sensor.find_bodies(".*_foot")
-        self._undesired_contact_body_ids, _ = self._contact_sensor.find_bodies(".*_thigh")
+        self._thigh_ids, _ = self._contact_sensor.find_bodies(".*_thigh")
+        self._undesired_contact_body_ids = self._thigh_ids
+        print("UNDESIRED CONTACTS: Thighs and Calfs")
+        print("IDS: ", self._undesired_contact_body_ids)
 
     def create_gaussian_heightmap(self, h, w):
         y = torch.arange(h, device=self.device, dtype=torch.float32)
@@ -109,67 +112,6 @@ class Go2LidarEnv(DirectRLEnv):
 
     def _apply_action(self):
         self._robot.set_joint_position_target(self._processed_actions)
-
-    def _get_lidar_obs(self):
-        """Generate per-environment heightmaps from lidar data (fully vectorized).
-        
-        Returns:
-            torch.Tensor: Heightmaps with shape [num_envs, x_cells, y_cells]
-        """
-        x_range = (-self.cfg.height_map_dist, self.cfg.height_map_dist)
-        y_range = (-self.cfg.height_map_dist / 2.0, self.cfg.height_map_dist / 2.0)
-        
-        # Grid dimensions
-        x_cells = int((x_range[1] - x_range[0]) * self.cfg.res)
-        y_cells = int((y_range[1] - y_range[0]) * self.cfg.res)
-        cells_per_env = x_cells * y_cells
-        
-        # Calculate rays: [num_envs, num_rays, 3]
-        rays = self._height_scanner.data.pos_w.unsqueeze(1) - self._height_scanner.data.ray_hits_w
-        
-        # Mark valid rays before replacing inf
-        ray_hit = torch.isfinite(rays).all(dim=-1)
-       
-       
-        offset_robot_frame = torch.tensor(self.cfg.lidar_offset, device=rays.device).unsqueeze(0).repeat(rays.shape[0], 1)  # [num_envs, 3]
-        offset_world_frame = quat_apply(self._robot.data.root_quat_w, offset_robot_frame)  # [num_envs, 3]
-        rays += offset_world_frame.unsqueeze(1)
-        # Rotate from world to robot frame
-        # Reshape rays to [num_envs * num_rays, 3] for quat_apply
-        num_envs, num_rays, _ = rays.shape
-        rays_flat = rays.reshape(num_envs * num_rays, 3)
-        # Expand quaternions to match: [num_envs, 4] -> [num_envs * num_rays, 4]
-        quat_expanded = quat_conjugate(self._robot.data.root_quat_w).unsqueeze(1).expand(num_envs, num_rays, 4).reshape(num_envs * num_rays, 4)
-        rays_flat = quat_apply(quat_expanded, rays_flat)
-        rays = rays_flat.reshape(num_envs, num_rays, 3)
-        
-        # Convert to grid indices: [num_envs, num_rays]
-        x_idx = ((rays[:, :, 0] - x_range[0]) * self.cfg.res).long()
-        y_idx = ((rays[:, :, 1] - y_range[0]) * self.cfg.res).long()
-        
-        # Validate and flatten
-        valid = (
-            ray_hit &
-            (x_idx >= 0) & (x_idx < x_cells) &
-            (y_idx >= 0) & (y_idx < y_cells)
-        )
-        
-        # Create global indices: env_id * cells_per_env + x_idx * y_cells + y_idx
-        env_ids = torch.arange(self.num_envs, device=rays.device).view(-1, 1).expand_as(x_idx)
-        global_idx = (env_ids * cells_per_env + x_idx * y_cells + y_idx)[valid]
-        z_vals = rays[:, :, 2][valid]
-        
-        # Single scatter operation for all environments
-        height_map = torch.zeros(self.num_envs * cells_per_env, device=rays.device)
-        if len(global_idx) > 0:
-            height_map.scatter_reduce_(0, global_idx, z_vals, reduce='amax', include_self=False)
-        
-        # Reshape and set center region to 0 for each environment
-        height_map = height_map.view(self.num_envs, x_cells, y_cells)
-        height_map[height_map<0.0] = 0.0
-        height_map[:, -1, :] = 0.0
-        
-        return height_map.flatten(1)
     
     def _process_heightmap(self, height_map):
         sampled_indices = torch.multinomial(self.gaussian_prob_heightmap, self.cfg.n_zeros, replacement=True)
@@ -183,11 +125,17 @@ class Go2LidarEnv(DirectRLEnv):
         if isinstance(self.cfg, Go2LidarRoughEnvCfg):
             height_data = (
                 self._height_scanner.data.pos_w[:, 2].unsqueeze(1) - self._height_scanner.data.ray_hits_w[..., 2] - 0.28
-            ).clip(-1.0, 1.0) #remove the rows at the back to match the real lidar that doesnt provide this info
-            height_data_actor = self._process_heightmap(height_data)
-            # height_data = self._get_lidar_obs()
+            ).clip(-1.0, 1.0) 
+            height_data_actor = height_data + (2.0 * torch.rand_like(height_data) - 1.0) * float(0.01) * self.cfg.randomize
+            
+            height_data_actor = self._process_heightmap(height_data_actor) 
             # torch.set_printoptions(precision=2, linewidth=1000, sci_mode=False)
-            # print(height_data_actor.reshape(self.num_envs, 15, 10).flip(1, 2))
+            # print(height_data_actor.reshape(self.num_envs, 15, 10).flip(1,2))            
+            
+            
+            # x_data = (self._height_scanner.data.pos_w[:, 0].unsqueeze(1) - self._height_scanner.data.ray_hits_w[..., 0]).reshape(self.num_envs, 15, 10).flip(1,2)
+            # print(x_data)
+            # height_data = self._get_lidar_obs()
             # print(torch.sum(height_data_actor==0.0))
         foot_contacts = (torch.norm(self._contact_sensor.data.net_forces_w[:, self._feet_ids], dim=-1) > 1.0).float()
         # Extract yaw angle from quaternion and encode as sin/cos
@@ -195,11 +143,11 @@ class Go2LidarEnv(DirectRLEnv):
             [
                 tensor
                 for tensor in (
-                    self._robot.data.root_ang_vel_b,
-                    self._robot.data.projected_gravity_b,
+                    self._robot.data.root_ang_vel_b + (2.0 * torch.rand_like(self._robot.data.root_lin_vel_b) - 1.0) * float(0.1) * self.cfg.randomize,
+                    self._robot.data.projected_gravity_b + (2.0 * torch.rand_like(self._robot.data.projected_gravity_b) - 1.0) * float(0.05) * self.cfg.randomize,
                     self._commands.get_command("base_velocity"),
-                    self._robot.data.joint_pos - self._robot.data.default_joint_pos,
-                    self._robot.data.joint_vel,
+                    self._robot.data.joint_pos - self._robot.data.default_joint_pos + (2.0 * torch.rand_like(self._robot.data.default_joint_pos) - 1.0) * float(0.01) * self.cfg.randomize,
+                    self._robot.data.joint_vel + (2.0 * torch.rand_like(self._robot.data.joint_vel) - 1.0) * float(0.1) * self.cfg.randomize,
                     height_data_actor,
                     self._actions,
                 )
@@ -220,7 +168,6 @@ class Go2LidarEnv(DirectRLEnv):
                     self._robot.data.joint_vel,
                     foot_contacts,
                     height_data,
-                    self._previous_actions,
                     self._actions,
                 )
                 if tensor is not None
@@ -229,7 +176,7 @@ class Go2LidarEnv(DirectRLEnv):
         )
         observations = {"policy": actor_obs,
                         "critic": critic_obs}
-        self._previous_actions = self._actions.clone()        
+        self._previous_actions = self._actions
         return observations
 
     def _get_rewards(self) -> torch.Tensor:
@@ -252,9 +199,10 @@ class Go2LidarEnv(DirectRLEnv):
         # feet air time
         first_contact = self._contact_sensor.compute_first_contact(self.step_dt)[:, self._feet_ids]
         last_air_time = self._contact_sensor.data.last_air_time[:, self._feet_ids]
-        air_time = torch.sum((last_air_time - 0.5) * first_contact, dim=1) * (
+        air_time = torch.sum(torch.clamp(last_air_time - 0.5, min=0.0) * first_contact, dim=1) * (
             torch.norm(self._commands.get_command("base_velocity")[:, :2], dim=1) > 0.1
         )
+        
         # undesired contacts
         net_contact_forces = self._contact_sensor.data.net_forces_w_history
         is_contact = (
@@ -312,6 +260,17 @@ class Go2LidarEnv(DirectRLEnv):
         joint_vel = self._robot.data.default_joint_vel[env_ids]
         default_root_state = self._robot.data.default_root_state[env_ids]
         default_root_state[:, :3] += self._terrain.env_origins[env_ids]
+        # Add x-axis offset to spawn position
+        # default_root_state[:, 0] += 0.5  # Offset in meters (change this value as needed)
+        # # Rotate 45 degrees around z-axis at spawn
+        # import math
+        # angle = math.pi / 4  # 45 degrees
+        # z_rot_quat = torch.tensor(
+        #     [math.cos(angle / 2), 0.0, 0.0, math.sin(angle / 2)],
+        #     dtype=default_root_state.dtype, device=self.device
+        # ).expand(len(env_ids), -1)
+        # default_root_state[:, 3:7] = quat_mul(z_rot_quat, default_root_state[:, 3:7])
+
         self._robot.write_root_pose_to_sim(default_root_state[:, :7], env_ids)
         self._robot.write_root_velocity_to_sim(default_root_state[:, 7:], env_ids)
         self._robot.write_joint_state_to_sim(joint_pos, joint_vel, None, env_ids)

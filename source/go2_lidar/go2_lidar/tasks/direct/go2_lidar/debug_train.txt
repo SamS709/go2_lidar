@@ -572,7 +572,7 @@ Idées: résolution moins élevée poir l'actor (height_map)
 
 ###########################################################################################################################################################
 ###########################################################################################################################################################
-log: logs/rsl_rl/go2-lidar/2026-02-1??????????????
+log: logs/rsl_rl/go2-lidar/2026-02-15_21-41-17
 
 KEY CHANGE: go back to previous heightmap shape for actor (15, 10), but seting N sampled in (50, 70) values of it to zero.
 
@@ -629,5 +629,449 @@ OBSERVATIONS:
         critic_obs = SAME
 RESULTS:
 ###########################################################################################################################################################
+Works nice but can't go upstairs on high steps and the feet are not well sync
 
 
+8.
+
+###########################################################################################################################################################
+###########################################################################################################################################################
+log: logs/rsl_rl/go2-lidar/2026-02-16_16-16-20
+
+KEY CHANGE: Change the number of cells to zero and the def pos reward
+
+REWARDS:  
+###########################################################################################################################################################
+
+   def_pos_reward_scale = -0.001
+
+
+COMMANDS:
+###########################################################################################################################################################
+
+    SAME
+
+RANDOMIZATION:
+###########################################################################################################################################################
+
+    SAME
+
+OBSERVATIONS:
+###########################################################################################################################################################
+
+    Actor has less info in its height data (same shape but some cells set to zero)
+    cells set to zero are sampled from a 2d gaussian grid that gives a proba to be set to zero
+    -> inverted gaussian: the closer we are to the border, the higher the proba to be set to zero.
+
+    height_scanner = SAME
+
+    def _process_heightmap(self, height_map):
+        sampled_indices = torch.multinomial(self.gaussian_prob_heightmap, self.cfg.n_zeros, replacement=True)
+        height_map_actor = height_map.clone()
+        height_map_actor[:, sampled_indices] = 0.0
+        return height_map_actor
+
+    height_data_actor = self._process_heightmap(height_data)
+
+    actor_obs = torch.cat(
+            [
+                tensor
+                for tensor in (
+                    self._robot.data.root_ang_vel_b,
+                    self._robot.data.projected_gravity_b,
+                    self._commands.get_command("base_velocity"),
+                    self._robot.data.joint_pos - self._robot.data.default_joint_pos,
+                    self._robot.data.joint_vel,
+                    height_data_actor,
+                    self._actions,
+                )
+                if tensor is not None
+            ],
+            dim=-1,
+        )
+        
+        critic_obs = SAME
+RESULTS:
+###########################################################################################################################################################
+Works well, but it's clear that we can dicrease N (the number of cells set to zero)
+
+
+9.
+
+TRAINED ON PREVIOUS CHECKPOINT !!!
+
+###########################################################################################################################################################
+###########################################################################################################################################################
+log: logs/rsl_rl/go2-lidar/2026-02-17_20-29-54
+
+KEY CHANGE:  
+the number of cells to zero 
+the def pos reward
+the randomization of OBSERVATIONS
+the randomization of EventCfg
+
+REWARDS / CFG:  
+###########################################################################################################################################################
+
+    def_pos_reward_scale = -0.005
+    n_zeros = 50
+
+
+COMMANDS:
+###########################################################################################################################################################
+
+    SAME
+
+RANDOMIZATION:
+###########################################################################################################################################################
+
+    @configclass
+    class EventCfg:
+    """Configuration for randomization."""
+
+     # startup
+    physics_material = EventTerm(
+        func=mdp.randomize_rigid_body_material,
+        mode="startup",
+        params={
+            "asset_cfg": SceneEntityCfg("robot", body_names=".*"),
+            "static_friction_range": (0.3, 1.2),
+            "dynamic_friction_range": (0.3, 1.2),
+            "restitution_range": (0.0, 0.15),
+            "num_buckets": 64,
+        },
+    )
+
+    add_base_mass = EventTerm(
+        func=mdp.randomize_rigid_body_mass,
+        mode="startup",
+        params={
+            "asset_cfg": SceneEntityCfg("robot", body_names="base"),
+            "mass_distribution_params": (-1.0, 3.0),
+            "operation": "add",
+        },
+    )
+
+    base_com = EventTerm(
+        func=mdp.randomize_rigid_body_com,
+        mode="startup",
+        params={
+            "asset_cfg": SceneEntityCfg("robot", body_names="base"),
+            "com_range": {"x": (-0.05, 0.05), "y": (-0.05, 0.05), "z": (-0.01, 0.01)},
+        },
+    )
+
+    reset_base = EventTerm(
+        func=mdp.reset_root_state_uniform,
+        mode="reset",
+        params={
+            "pose_range": {"x": (-0.5, 0.5), "y": (-0.5, 0.5), "yaw": (-3.14, 3.14)},
+            "velocity_range": {
+                "x": (-0.1, 0.1),
+                "y": (-0.1, 0.1),
+                "z": (-0.1, 0.1),
+                "roll": (-0.1, 0.1),
+                "pitch": (-0.1, 0.1),
+                "yaw": (-0.1, 0.1),
+            },
+        },
+    )
+
+    reset_robot_joints = EventTerm(
+        func=mdp.reset_joints_by_scale,
+        mode="reset",
+        params={
+            "position_range": (0.9, 1.1),
+            "velocity_range": (-1.0, 1.0),
+        },
+    )
+
+    # interval
+    push_robot = EventTerm(
+        func=mdp.push_by_setting_velocity,
+        mode="interval",
+        interval_range_s=(5.0, 10.0),
+        params={"velocity_range": {"x": (-0.5, 0.5), "y": (-0.5, 0.5)}},
+    )
+
+
+OBSERVATIONS:
+###########################################################################################################################################################
+
+    Actor obs are randomized
+
+    actor_obs = torch.cat(
+            [
+                tensor
+                for tensor in (
+                    self._robot.data.root_ang_vel_b + (2.0 * torch.rand_like(self._robot.data.root_lin_vel_b) - 1.0) * float(0.1) * self.cfg.randomize,
+                    self._robot.data.projected_gravity_b + (2.0 * torch.rand_like(self._robot.data.projected_gravity_b) - 1.0) * float(0.05) * self.cfg.randomize,
+                    self._commands.get_command("base_velocity"),
+                    self._robot.data.joint_pos - self._robot.data.default_joint_pos + (2.0 * torch.rand_like(self._robot.data.default_joint_pos) - 1.0) * float(0.01) * self.cfg.randomize,
+                    self._robot.data.joint_vel + (2.0 * torch.rand_like(self._robot.data.joint_vel) - 1.0) * float(0.1) * self.cfg.randomize,
+                    height_data_actor,
+                    self._actions,
+                )
+                if tensor is not None
+            ],
+            dim=-1,
+        )
+        
+        critic_obs = SAME
+RESULTS:
+###########################################################################################################################################################
+
+Works but not on real hardware
+Ease the task: only stairs for the moment.
+OK, the real problem is that i was doing:
+height_data_actor = (2.0 * torch.rand_like(height_data) - 1.0) * float(0.01) * self.cfg.randomize
+Instead of this:
+height_data_actor = height_data + (2.0 * torch.rand_like(height_data) - 1.0) * float(0.01) * self.cfg.randomize
+
+
+
+10.
+4096 envs
+RETRAINED FROM SCRATCH
+
+###########################################################################################################################################################
+###########################################################################################################################################################
+log: logs/rsl_rl/go2-lidar/2026-03-07_11-03-18
+
+KEY CHANGES:  
+UNDESIRED CONTACT ENABLE (calf + thigh)
+Change yaw_rate_reward_scale
+Terrain: Only stairs
+reduced n_zeros = 30
+
+REWARDS / CFG:  
+###########################################################################################################################################################
+
+    TERRAINS_CFG = TerrainGeneratorCfg(
+        size=(8.0, 8.0),
+        border_width=20.0,
+        num_rows=10,
+        num_cols=20,
+        horizontal_scale=0.1,
+        vertical_scale=0.005,
+        slope_threshold=0.75,
+        use_cache=False,
+        sub_terrains={
+            "pyramid_stairs": terrain_gen.MeshPyramidStairsTerrainCfg(
+                proportion=0.5,
+                step_height_range=(0.05, 0.23),
+                step_width=0.3,
+                platform_width=2.0,
+                border_width=1.0,
+                holes=False,
+            ),
+            "pyramid_stairs_inv": terrain_gen.MeshInvertedPyramidStairsTerrainCfg(
+                proportion=0.5,
+                step_height_range=(0.05, 0.23),
+                step_width=0.3,
+                platform_width=2.0,
+                border_width=1.0,
+                holes=False,
+            )
+        },
+    )
+
+    n_zeros = 30
+
+
+    lin_vel_reward_scale = 1.5
+    yaw_rate_reward_scale = 0.5
+    z_vel_reward_scale = -2.0
+    ang_vel_reward_scale = -0.05
+    joint_torque_reward_scale = -2.0e-4
+    joint_accel_reward_scale = -2.5e-7
+    action_rate_reward_scale = -0.01
+    feet_air_time_reward_scale = 0.01
+    undesired_contact_reward_scale = -1.0
+    flat_orientation_reward_scale = 0.0
+    velocity_threshold = 0.3
+    def_pos_reward_scale = -0.005
+    stand_still_scale = 5.0
+
+    
+
+
+COMMANDS:
+###########################################################################################################################################################
+
+    SAME
+
+RANDOMIZATION:
+###########################################################################################################################################################
+
+SAME
+
+OBSERVATIONS:
+###########################################################################################################################################################
+
+    Actor obs are randomized
+
+    actor_obs = torch.cat(
+            [
+                tensor
+                for tensor in (
+                    self._robot.data.root_ang_vel_b + (2.0 * torch.rand_like(self._robot.data.root_lin_vel_b) - 1.0) * float(0.1) * self.cfg.randomize,
+                    self._robot.data.projected_gravity_b + (2.0 * torch.rand_like(self._robot.data.projected_gravity_b) - 1.0) * float(0.05) * self.cfg.randomize,
+                    self._commands.get_command("base_velocity"),
+                    self._robot.data.joint_pos - self._robot.data.default_joint_pos + (2.0 * torch.rand_like(self._robot.data.default_joint_pos) - 1.0) * float(0.01) * self.cfg.randomize,
+                    self._robot.data.joint_vel + (2.0 * torch.rand_like(self._robot.data.joint_vel) - 1.0) * float(0.1) * self.cfg.randomize,
+                    height_data_actor,
+                    self._actions,
+                )
+                if tensor is not None
+            ],
+            dim=-1,
+        )
+        
+        critic_obs = SAME
+RESULTS:
+###########################################################################################################################################################
+
+If works: implement a buffer for the heightmap and sample from it to update it to simulate how the real heightmap is processed
+Not working: remove the undesired contacts !
+The robot just turns around in the base center of the stairs
+Also sample more often the commands
+
+
+REMARK: I trained policies from 10. to 2026-03-11_19-49-59 without setting self._previous_actions = self._actions anywhere.
+So self._previous_actions = 0 everytime resulting in a ENEORMOUS action_rate penalty: action_rate = (actions - previous_actios)**2 = actions**2
+ALSO I decreased the entropy coef from 0.01 ,to 0.005 without noticing. I undo thischange, now entropy_coef = 0.01: more exploration
+ALSO air_time reward was not well defind, favouriseing a leg to be out of the ground (now i use isaaclab's reward that only rewards longer steps, bt if there is no contact, there is no reward, so t will not have a one leg up behavior)
+ALSO forbid _calf ids make the robot put its leg high to avoidcontacts with stairs
+
+11.
+4096 envs
+RETRAINED FROM SCRATCH
+
+###########################################################################################################################################################
+###########################################################################################################################################################
+log: logs/rsl_rl/go2-lidar/2026-03?????????????????
+
+KEY CHANGES:  
+UNDESIRED CONTACT DISABLE 
+Change yaw_rate_reward_scale
+Terrain: Only stairs (less steep steps)
+reduced n_zeros = 30
+
+REWARDS / CFG:  
+###########################################################################################################################################################
+
+
+    lin_vel_reward_scale = 1.5
+    yaw_rate_reward_scale = 0.5
+    z_vel_reward_scale = -0.5
+    ang_vel_reward_scale = -0.05
+    joint_torque_reward_scale = -2.0e-4
+    joint_accel_reward_scale = -2.5e-7
+    action_rate_reward_scale = -0.01
+    feet_air_time_reward_scale = 0.01
+    undesired_contact_reward_scale = -1.0
+    flat_orientation_reward_scale = 0.0
+    velocity_threshold = 0.3
+    def_pos_reward_scale = -0.001
+    stand_still_scale = 5.0
+
+    terrain = TerrainImporterCfg(
+        prim_path="/World/ground",
+        terrain_type="generator",
+        terrain_generator=ROUGH_TERRAINS_CFG,
+        max_init_terrain_level=9,
+        collision_group=-1,
+        physics_material=sim_utils.RigidBodyMaterialCfg(
+            friction_combine_mode="multiply",
+            restitution_combine_mode="multiply",
+            static_friction=1.0,
+            dynamic_friction=1.0,
+        ),
+        visual_material=sim_utils.MdlFileCfg(
+            mdl_path="{NVIDIA_NUCLEUS_DIR}/Materials/Base/Architecture/Shingles_01.mdl",
+            project_uvw=True,
+        ),
+        debug_vis=False,
+
+    sigma = 4.00
+    n_zeros = 30
+
+    
+
+
+COMMANDS:
+###########################################################################################################################################################
+
+    @configclass
+class CommandsCfg:
+    """Command specifications for the MDP."""
+
+    base_velocity = mdp.UniformVelocityCommandCfg(
+        asset_name="robot",
+        resampling_time_range=(10.0, 10.0),
+        rel_standing_envs=0.02,
+        heading_command=True,
+        heading_control_stiffness=0.5,
+        debug_vis=False,
+        ranges=mdp.UniformVelocityCommandCfg.Ranges(
+            lin_vel_x=(0.0, 1.0), lin_vel_y=(-0.5, 0.5), ang_vel_z=(-1.0, 1.0), heading=(-3.14, 3.14)
+        ),
+    )
+    
+
+RANDOMIZATION:
+###########################################################################################################################################################
+
+    SAME
+
+OBSERVATIONS:
+###########################################################################################################################################################
+
+    if isinstance(self.cfg, Go2LidarRoughEnvCfg):
+        height_data = (
+            self._height_scanner.data.pos_w[:, 2].unsqueeze(1) - self._height_scanner.data.ray_hits_w[..., 2] - 0.28
+        ).clip(-1.0, 1.0) 
+        height_data_actor = height_data + (2.0 * torch.rand_like(height_data) - 1.0) * float(0.01) * self.cfg.randomize
+        height_data_actor = self._process_heightmap(height_data_actor) 
+
+    foot_contacts = (torch.norm(self._contact_sensor.data.net_forces_w[:, self._feet_ids], dim=-1) > 1.0).float()
+
+    actor_obs = torch.cat(
+        [
+            tensor
+            for tensor in (
+                self._robot.data.root_ang_vel_b + (2.0 * torch.rand_like(self._robot.data.root_lin_vel_b) - 1.0) * float(0.1) * self.cfg.randomize,
+                self._robot.data.projected_gravity_b + (2.0 * torch.rand_like(self._robot.data.projected_gravity_b) - 1.0) * float(0.05) * self.cfg.randomize,
+                self._commands.get_command("base_velocity"),
+                self._robot.data.joint_pos - self._robot.data.default_joint_pos + (2.0 * torch.rand_like(self._robot.data.default_joint_pos) - 1.0) * float(0.01) * self.cfg.randomize,
+                self._robot.data.joint_vel + (2.0 * torch.rand_like(self._robot.data.joint_vel) - 1.0) * float(0.1) * self.cfg.randomize,
+                height_data_actor,
+                self._actions,
+            )
+            if tensor is not None
+        ],
+        dim=-1,
+    )
+    
+    critic_obs = torch.cat(
+        [
+            tensor
+            for tensor in (
+                self._robot.data.root_lin_vel_b,
+                self._robot.data.root_ang_vel_b,
+                self._robot.data.projected_gravity_b,
+                self._commands.get_command("base_velocity"),
+                self._robot.data.joint_pos - self._robot.data.default_joint_pos,
+                self._robot.data.joint_vel,
+                foot_contacts,
+                height_data,
+                self._actions,
+            )
+            if tensor is not None
+        ],
+        dim=-1,
+    )
+
+RESULTS:
+###########################################################################################################################################################

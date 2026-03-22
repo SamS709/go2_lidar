@@ -38,7 +38,7 @@ The goal is to add the lidar of the go2 as a perception module so that the robot
   
 - Using a python interpreter that has Isaac Lab installed, install the library in editable mode using:
 
-    ```bash
+
     cd go2_isaaclab
     python -m pip install -e source/go2_lidar
     ```

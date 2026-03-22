@@ -142,7 +142,8 @@ class RaycasterSensorSceneCfg(InteractiveSceneCfg):
     '''
     ray_caster = RayCasterCfg(
         prim_path="/World/envs/env_.*/Robot/base",
-        offset=RayCasterCfg.OffsetCfg(pos=(0.28945 + 0.25, 0.0, -0.04682)),
+        # offset=RayCasterCfg.OffsetCfg(pos=(0.28945 + 0.25, 0.0, -0.04682)),
+            offset=RayCasterCfg.OffsetCfg(pos=(0.25, 0.0, -0.04682)),
         update_period=1/20,
         ray_alignment="yaw",
         pattern_cfg=patterns.GridPatternCfg(resolution=0.1, size=[1.4, 0.9], ordering = "yx"),
