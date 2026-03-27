@@ -226,8 +226,8 @@ class Go2LidarRoughEnvCfg(Go2LidarFlatEnvCfg):
             )
         },
     )
-    # ROUGH_TERRAINS_CFG.num_cols = 3
-    # ROUGH_TERRAINS_CFG.num_rows = 2
+    ROUGH_TERRAINS_CFG.num_cols = 3
+    ROUGH_TERRAINS_CFG.num_rows = 2
     
     # ROUGH_TERRAINS_CFG.sub_terrains["boxes"].grid_height_range = (0.025, 0.1)
     # ROUGH_TERRAINS_CFG.sub_terrains["random_rough"].noise_range = (0.01, 0.06)

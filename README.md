@@ -8,9 +8,9 @@
 
 ## Overview
 
-This project is a part of the go2_lidar project which aims to make a Sim2Real for Unitree Go2 quadruped locomotion
+This project is a part of the [go2_isaaclab](#https://github.com/SamS709/go2_lidar) project which aims to make a Sim2Real for Unitree Go2 quadruped locomotion
 
-The goal is to add the lidar of the go2 as a perception module so that the robot can walk on rough environments.
+The goal of this repo is to add the lidar of the go2 as a perception module so that the robot can walk on rough environments.
 
 **Key Features:**
 
@@ -87,4 +87,14 @@ Then, I will just try the trained policies on flat terrains with a mock height_m
 This mock height map is built this way (with offset = 0.28 fixed at training time): 
 height_map = torch.zeros(x_length, y_length) - offset + robot_base_height
 
+Then, I am only able to see if the policy is ok on flat terrains, whih is the case: 
 
+In Unitree mujoco environment:
+
+<img src="images/Unitree_MuJoCo.png" width="400"/>
+
+In Newton's Isaaclab's branch environment:
+
+<img src="images/Newton_MuJoCo.png" width="400"/>
+
+For the moment
