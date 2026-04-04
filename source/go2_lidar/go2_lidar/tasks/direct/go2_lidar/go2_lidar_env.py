@@ -60,8 +60,21 @@ class Go2LidarEnv(DirectRLEnv):
         self._feet_ids, _ = self._contact_sensor.find_bodies(".*_foot")
         self._thigh_ids, _ = self._contact_sensor.find_bodies(".*_thigh")
         self._undesired_contact_body_ids = self._thigh_ids
+        self._finite_warn_counter = 0
         print("UNDESIRED CONTACTS: Thighs and Calfs")
         print("IDS: ", self._undesired_contact_body_ids)
+
+    def _sanitize_tensor(self, tensor: torch.Tensor, name: str, clamp_abs: float | None = None) -> torch.Tensor:
+        """Replace non-finite values and optionally clamp to avoid destabilizing PPO updates."""
+        if not torch.isfinite(tensor).all():
+            self._finite_warn_counter += 1
+            # Print occasionally to avoid flooding logs while still surfacing instability.
+            if self._finite_warn_counter <= 5 or self._finite_warn_counter % 500 == 0:
+                print(f"[WARN] Non-finite values detected in {name}. Applying nan_to_num safeguard.")
+            tensor = torch.nan_to_num(tensor, nan=0.0, posinf=0.0, neginf=0.0)
+        if clamp_abs is not None:
+            tensor = torch.clamp(tensor, min=-clamp_abs, max=clamp_abs)
+        return tensor
 
     def create_gaussian_heightmap(self, h, w):
         y = torch.arange(h, device=self.device, dtype=torch.float32)
@@ -129,6 +142,8 @@ class Go2LidarEnv(DirectRLEnv):
             height_data_actor = height_data + (2.0 * torch.rand_like(height_data) - 1.0) * float(0.01) * self.cfg.randomize
             
             height_data_actor = self._process_heightmap(height_data_actor) 
+            height_data = self._sanitize_tensor(height_data, "height_data", clamp_abs=10.0)
+            height_data_actor = self._sanitize_tensor(height_data_actor, "height_data_actor", clamp_abs=10.0)
             # torch.set_printoptions(precision=2, linewidth=1000, sci_mode=False)
             # print(height_data_actor.reshape(self.num_envs, 15, 10).flip(1,2))            
             
@@ -155,6 +170,7 @@ class Go2LidarEnv(DirectRLEnv):
             ],
             dim=-1,
         )
+        actor_obs = self._sanitize_tensor(actor_obs, "actor_obs", clamp_abs=100.0)
         
         critic_obs = torch.cat(
             [
@@ -174,6 +190,7 @@ class Go2LidarEnv(DirectRLEnv):
             ],
             dim=-1,
         )
+        critic_obs = self._sanitize_tensor(critic_obs, "critic_obs", clamp_abs=100.0)
         observations = {"policy": actor_obs,
                         "critic": critic_obs}
         self._previous_actions = self._actions
@@ -232,6 +249,7 @@ class Go2LidarEnv(DirectRLEnv):
             "def_pos" : def_pos * self.cfg.def_pos_reward_scale * self.step_dt
         }
         reward = torch.sum(torch.stack(list(rewards.values())), dim=0)
+        reward = self._sanitize_tensor(reward, "reward", clamp_abs=100.0)
         # Logging
         for key, value in rewards.items():
             self._episode_sums[key] += value

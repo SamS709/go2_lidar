@@ -146,7 +146,7 @@ class RaycasterSensorSceneCfg(InteractiveSceneCfg):
             offset=RayCasterCfg.OffsetCfg(pos=(0.25, 0.0, -0.04682)),
         update_period=1/20,
         ray_alignment="yaw",
-        pattern_cfg=patterns.GridPatternCfg(resolution=0.1, size=[1.4, 0.9], ordering = "yx"),
+        pattern_cfg=patterns.GridPatternCfg(resolution=0.05, size=[1.45, 0.95], ordering = "yx"),
         debug_vis=True,
         mesh_prim_paths=["/World/ground"],
     )
@@ -207,7 +207,7 @@ def sample_gaussian_and_zero_heightmap(heightmap: torch.Tensor, sigma: float, N:
         Modified heightmap with N sampled points set to zero
     """
     num_envs, length = heightmap.shape
-    h, w = 15, 10  # Fixed heightmap dimensions
+    h, w = 30, 20  # Fixed heightmap dimensions
     device = heightmap.device
     
     # Get cached Gaussian probability distribution
@@ -299,14 +299,13 @@ def run_simulator(sim: sim_utils.SimulationContext, scene: InteractiveScene):
         print("-------------------------------")
         print("Robot base height (z):", scene["robot"].data.root_pos_w[:, 2])
         # print(scene["ray_caster"])
-        n_rows_deleted = 5
         height_data = (
                 scene["ray_caster"].data.pos_w[:, 2].unsqueeze(1) - scene["ray_caster"].data.ray_hits_w[..., 2]# - 0.28
             )
         
 
-        sample_gaussian_and_zero_heightmap(heightmap=height_data, sigma= 4.0, N = 90)
-        height_data = height_data.reshape(args_cli.num_envs, 15, 10).flip(1,2)
+        sample_gaussian_and_zero_heightmap(heightmap=height_data, sigma= 6.0, N = 200)
+        height_data = height_data.reshape(args_cli.num_envs, 30, 20).flip(1,2)
         # height_data_half =  
         # height_data2 = (
         #         scene["ray_caster"].data.pos_w[:, 2].unsqueeze(1) - scene["ray_caster"].data.ray_hits_w[..., 2] - 0.28
@@ -314,7 +313,7 @@ def run_simulator(sim: sim_utils.SimulationContext, scene: InteractiveScene):
         # print(height_data-height_data2)
         x_data = (
                 scene["ray_caster"].data.pos_w[:, 0].unsqueeze(1) - scene["ray_caster"].data.ray_hits_w[..., 0] 
-            ).reshape(args_cli.num_envs, 15, 10).flip(1,2)# .clip(-1.0, 1.0)  
+            ).reshape(args_cli.num_envs, 30, 20).flip(1,2)# .clip(-1.0, 1.0)  
         # x_data_half = x_data[:, ::2, ::2] 
         y_data = (
                 scene["ray_caster"].data.pos_w[:, 1].unsqueeze(1) - scene["ray_caster"].data.ray_hits_w[..., 1] 

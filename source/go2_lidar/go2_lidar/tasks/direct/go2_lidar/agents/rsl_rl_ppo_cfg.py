@@ -16,6 +16,7 @@ class Go2LidarFlatPPORunnerCfg(RslRlOnPolicyRunnerCfg):
     experiment_name = "go2_lidar"
     policy = RslRlPpoActorCriticCfg(
         init_noise_std=1.0,
+        noise_std_type="log",
         actor_obs_normalization=True,
         critic_obs_normalization=True,
         actor_hidden_dims=[128, 128, 128],
@@ -46,8 +47,9 @@ class Go2LidarRoughPPORunnerCfg(RslRlOnPolicyRunnerCfg):
     experiment_name = "go2_lidar"
     policy = RslRlPpoActorCriticCfg(
         init_noise_std=1.0,
-        actor_obs_normalization=False,
-        critic_obs_normalization=False,
+        noise_std_type="log",
+        actor_obs_normalization=True,
+        critic_obs_normalization=True,
         actor_hidden_dims=[512, 256, 128],
         critic_hidden_dims=[512, 256, 128],
         activation="elu",
@@ -59,7 +61,7 @@ class Go2LidarRoughPPORunnerCfg(RslRlOnPolicyRunnerCfg):
         entropy_coef=0.01,
         num_learning_epochs=5,
         num_mini_batches=4,
-        learning_rate=1.0e-3,
+        learning_rate=5.0e-4,
         schedule="adaptive",
         gamma=0.99,
         lam=0.95,
@@ -75,11 +77,12 @@ class Go2LidarRoughPPORunnerRecurrentCfg(RslRlOnPolicyRunnerCfg):
     experiment_name = "go2_lidar"
     policy = RslRlPpoActorCriticRecurrentCfg(
         init_noise_std=1.0,
+        noise_std_type="log",
         rnn_type="lstm",
         rnn_hidden_dim=128,
         rnn_num_layers=2,
-        actor_obs_normalization=False,
-        critic_obs_normalization=False,
+        actor_obs_normalization=True,
+        critic_obs_normalization=True,
         actor_hidden_dims=[256, 128],
         critic_hidden_dims=[256, 128],
         activation="elu",
@@ -91,7 +94,7 @@ class Go2LidarRoughPPORunnerRecurrentCfg(RslRlOnPolicyRunnerCfg):
         entropy_coef=0.01,
         num_learning_epochs=5,
         num_mini_batches=4,
-        learning_rate=1.0e-3,
+        learning_rate=5.0e-4,
         schedule="adaptive",
         gamma=0.99,
         lam=0.95,

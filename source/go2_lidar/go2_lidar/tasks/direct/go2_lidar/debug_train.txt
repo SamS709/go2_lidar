@@ -943,24 +943,27 @@ So self._previous_actions = 0 everytime resulting in a ENEORMOUS action_rate pen
 ALSO I decreased the entropy coef from 0.01 ,to 0.005 without noticing. I undo thischange, now entropy_coef = 0.01: more exploration
 ALSO air_time reward was not well defind, favouriseing a leg to be out of the ground (now i use isaaclab's reward that only rewards longer steps, bt if there is no contact, there is no reward, so t will not have a one leg up behavior)
 ALSO forbid _calf ids make the robot put its leg high to avoidcontacts with stairs
+Stairs too abrupt: change config for the RANDOM_ROUGH
 
 11.
-4096 envs
+8192 envs
 RETRAINED FROM SCRATCH
-
+python scripts/rsl_rl/train.py --task Isaac-Velocity-Rough-Go2-Lidar-Direct-v0 --num_envs 8192 --headless
 ###########################################################################################################################################################
 ###########################################################################################################################################################
-log: logs/rsl_rl/go2-lidar/2026-03?????????????????
-
+log: logs/rsl_rl/go2-lidar/2026-04-01_13-59-21
 KEY CHANGES:  
 UNDESIRED CONTACT DISABLE 
+basic random rough terrain config : THIS IS THE REAL CHANGE: DON'T REMOVE THE BOXES
 Change yaw_rate_reward_scale
-Terrain: Only stairs (less steep steps)
 reduced n_zeros = 30
 
 REWARDS / CFG:  
 ###########################################################################################################################################################
 
+    ROUGH_TERRAINS_CFG.sub_terrains["boxes"].grid_height_range = (0.025, 0.1)
+    ROUGH_TERRAINS_CFG.sub_terrains["random_rough"].noise_range = (0.01, 0.06)
+    ROUGH_TERRAINS_CFG.sub_terrains["random_rough"].noise_step = 0.01
 
     lin_vel_reward_scale = 1.5
     yaw_rate_reward_scale = 0.5
@@ -970,7 +973,7 @@ REWARDS / CFG:
     joint_accel_reward_scale = -2.5e-7
     action_rate_reward_scale = -0.01
     feet_air_time_reward_scale = 0.01
-    undesired_contact_reward_scale = -1.0
+    undesired_contact_reward_scale = -0.0
     flat_orientation_reward_scale = 0.0
     velocity_threshold = 0.3
     def_pos_reward_scale = -0.001
@@ -1075,3 +1078,54 @@ OBSERVATIONS:
 
 RESULTS:
 ###########################################################################################################################################################
+IT WORKS quite ok but it steps wrong when going upstairs: the feet hit the stairs
++ PB during training == RuntimeError: normal expects all elements of std >= 0.0 :: 
+  =>  solution = checking if rewards and obs are not NaN, None or torch.inf, and in rsl_rl_ppo_cfg: [noise_std_type="log", actor_obs_normalization=True, critic_obs_normalization=True]
+
+
+
+
+
+12.
+8192 envs
+Retrained from scratch
+python scripts/rsl_rl/train.py --task Isaac-Velocity-Rough-Go2-Lidar-Direct-v0 --num_envs 8192 --headless
+###########################################################################################################################################################
+###########################################################################################################################################################
+log: logs/rsl_rl/go2-lidar/2026-04-03_14-21-50
+KEY CHANGES:  
+Fixed error std <= 0:
+    - Check rewards and obs values (no inf or NaN)
+    - rsl_rl_ppo_cfg: [noise_std_type="log", actor_obs_normalization=True, critic_obs_normalization=True]
+
+REWARDS / CFG:  
+###########################################################################################################################################################
+
+    SAME
+
+    
+COMMANDS:
+###########################################################################################################################################################
+
+    SAME
+    
+
+RANDOMIZATION:
+###########################################################################################################################################################
+
+    SAME
+
+OBSERVATIONS:
+###########################################################################################################################################################
+
+   SAME
+
+RESULTS:
+###########################################################################################################################################################
+Works ok but looks like it relies on the hit between foot and staitr to walk upstaires.
+I want it to take in account the height data for that, but the resolution might be too low for the grid height
+Idea: The resolution is not the pb: it works well in the isaaclab's env with 0.1.
+Solution: Curriculum
+
+
+

@@ -137,7 +137,7 @@ class Go2LidarFlatEnvCfg(DirectRLEnvCfg):
         ),
         physx=sim_utils.PhysxCfg(
             gpu_max_rigid_contact_count=512 * 1024,
-            gpu_max_rigid_patch_count=200 * 1024,
+            gpu_max_rigid_patch_count=9503130,
             gpu_found_lost_pairs_capacity=2**21,
             gpu_found_lost_aggregate_pairs_capacity=2**25,
             gpu_total_aggregate_pairs_capacity=2**21,
@@ -183,10 +183,10 @@ class Go2LidarFlatEnvCfg(DirectRLEnvCfg):
     joint_accel_reward_scale = -2.5e-7
     action_rate_reward_scale = -0.01
     feet_air_time_reward_scale = 0.01
-    undesired_contact_reward_scale = -1.0
+    undesired_contact_reward_scale = -0.00
     flat_orientation_reward_scale = 0.0
     velocity_threshold = 0.3
-    def_pos_reward_scale = -0.001
+    def_pos_reward_scale = -0.00
     stand_still_scale = 5.0
 
 
@@ -226,18 +226,24 @@ class Go2LidarRoughEnvCfg(Go2LidarFlatEnvCfg):
             )
         },
     )
-    ROUGH_TERRAINS_CFG.num_cols = 3
-    ROUGH_TERRAINS_CFG.num_rows = 2
+    # ROUGH_TERRAINS_CFG.num_cols = 2
+    # ROUGH_TERRAINS_CFG.num_rows = 5
+    ROUGH_TERRAINS_CFG.sub_terrains["pyramid_stairs_inv"].step_height_range = (0.1, 0.1)
     
-    # ROUGH_TERRAINS_CFG.sub_terrains["boxes"].grid_height_range = (0.025, 0.1)
-    # ROUGH_TERRAINS_CFG.sub_terrains["random_rough"].noise_range = (0.01, 0.06)
-    # ROUGH_TERRAINS_CFG.sub_terrains["random_rough"].noise_step = 0.01
+    ROUGH_TERRAINS_CFG.sub_terrains["boxes"].grid_height_range = (0.025, 0.1)
+    ROUGH_TERRAINS_CFG.sub_terrains["random_rough"].noise_range = (0.01, 0.06)
+    ROUGH_TERRAINS_CFG.sub_terrains["random_rough"].noise_step = 0.01
     
+    
+    # ROUGH_TERRAINS_CFG.sub_terrains["pyramid_stairs"].proportion = 0.0
+    # ROUGH_TERRAINS_CFG.sub_terrains["random_rough"].proportion = 0.0
+    # ROUGH_TERRAINS_CFG.sub_terrains["boxes"].proportion = 0.0
+    # ROUGH_TERRAINS_CFG.sub_terrains["pyramid_stairs_inv"].proportion = 1.0
     terrain = TerrainImporterCfg(
         prim_path="/World/ground",
         terrain_type="generator",
         terrain_generator=ROUGH_TERRAINS_CFG,
-        max_init_terrain_level=9,
+        max_init_terrain_level=5,
         collision_group=-1,
         physics_material=sim_utils.RigidBodyMaterialCfg(
             friction_combine_mode="multiply",
@@ -308,7 +314,3 @@ class Go2LidarRoughEnvCfg(Go2LidarFlatEnvCfg):
    
 
     
-    
-
-    # reward scales (override from flat config)
-    flat_orientation_reward_scale = 0.0
