@@ -51,7 +51,7 @@ from isaaclab.utils import configclass
 from isaaclab.utils.math import quat_from_euler_xyz
 from isaaclab.terrains.config.rough import ROUGH_TERRAINS_CFG  # isort:skip
 import isaaclab.terrains as terrain_gen
-
+from isaaclab.utils.math import subtract_frame_transforms, quat_inv, quat_apply
 from isaaclab.terrains.config import TerrainGeneratorCfg
 
 
@@ -68,7 +68,7 @@ W, X, Y, Z = quat_from_euler_xyz(torch.tensor(-torch.pi), torch.tensor(torch.pi 
 class RaycasterSensorSceneCfg(InteractiveSceneCfg):
     """Design the scene with sensors on the robot."""
 
-    # rough terrain with boxes
+    # stairs terrain for lidar debugging
     ROUGH_TERRAINS_CFG.num_cols = 1
     ROUGH_TERRAINS_CFG.num_rows = 2
     terrain = TerrainImporterCfg(
@@ -84,14 +84,14 @@ class RaycasterSensorSceneCfg(InteractiveSceneCfg):
     slope_threshold=0.75,
     use_cache=False,
     sub_terrains={
-        # "pyramid_stairs": terrain_gen.MeshPyramidStairsTerrainCfg(
-        #     proportion=0.2,
-        #     step_height_range=(0.05, 0.23),
-        #     step_width=0.3,
-        #     platform_width=3.0,
-        #     border_width=1.0,
-        #     holes=False,
-        # ),
+        "pyramid_stairs": terrain_gen.MeshPyramidStairsTerrainCfg(
+            proportion=1.0,
+            step_height_range=(0.05, 0.15),
+            step_width=0.3,
+            platform_width=2.0,
+            border_width=1.0,
+            holes=False,
+        ),
         # "pyramid_stairs_inv": terrain_gen.MeshInvertedPyramidStairsTerrainCfg(
         #     proportion=0.2,
         #     step_height_range=(0.05, 0.23),
@@ -100,9 +100,6 @@ class RaycasterSensorSceneCfg(InteractiveSceneCfg):
         #     border_width=1.0,
         #     holes=False,
         # ),
-        "boxes": terrain_gen.MeshRandomGridTerrainCfg(
-            proportion=0.2, grid_width=0.45, grid_height_range=(0.05, 0.2), platform_width=2.0
-        ),
         # "random_rough": terrain_gen.HfRandomUniformTerrainCfg(
         #     proportion=0.2, noise_range=(0.02, 0.10), noise_step=0.02, border_width=0.25
         # ),
@@ -143,10 +140,11 @@ class RaycasterSensorSceneCfg(InteractiveSceneCfg):
     ray_caster = RayCasterCfg(
         prim_path="/World/envs/env_.*/Robot/base",
         # offset=RayCasterCfg.OffsetCfg(pos=(0.28945 + 0.25, 0.0, -0.04682)),
-            offset=RayCasterCfg.OffsetCfg(pos=(0.25, 0.0, -0.04682)),
+            offset=RayCasterCfg.OffsetCfg(pos=(0.28945 + 0.25, 0.0, 0.5)),
         update_period=1/20,
-        ray_alignment="yaw",
-        pattern_cfg=patterns.GridPatternCfg(resolution=0.05, size=[1.45, 0.95], ordering = "yx"),
+        ray_alignment="base",
+        attach_yaw_only=False,
+        pattern_cfg=patterns.GridPatternCfg(resolution=0.1, size=[1.4, 0.9], ordering = "yx"),
         debug_vis=True,
         mesh_prim_paths=["/World/ground"],
     )
@@ -207,7 +205,7 @@ def sample_gaussian_and_zero_heightmap(heightmap: torch.Tensor, sigma: float, N:
         Modified heightmap with N sampled points set to zero
     """
     num_envs, length = heightmap.shape
-    h, w = 30, 20  # Fixed heightmap dimensions
+    h, w = 15, 10  # Fixed heightmap dimensions
     device = heightmap.device
     
     # Get cached Gaussian probability distribution
@@ -220,6 +218,110 @@ def sample_gaussian_and_zero_heightmap(heightmap: torch.Tensor, sigma: float, N:
     heightmap[:, sampled_indices] = 0.0
     
     return heightmap
+
+
+def make_robot_roll_back_and_forth(
+    joint_targets: torch.Tensor, sim_time: float, amplitude: float = 0.25, frequency_hz: float = 0.20
+) -> torch.Tensor:
+    """Oscillate roll around body x-axis (left-right lean)."""
+    phase = np.sin(2.0 * np.pi * frequency_hz * sim_time)
+    roll_offset = amplitude * phase
+
+    # Left and right leg pairs move oppositely to induce roll motion.
+    joint_targets[:, 4] += roll_offset  # FL_thigh_joint
+    joint_targets[:, 6] += roll_offset  # RL_thigh_joint
+    joint_targets[:, 5] -= roll_offset  # FR_thigh_joint
+    joint_targets[:, 7] -= roll_offset  # RR_thigh_joint
+
+    calf_comp = 0.5 * roll_offset
+    joint_targets[:, 8] -= calf_comp  # FL_calf_joint
+    joint_targets[:, 10] -= calf_comp  # RL_calf_joint
+    joint_targets[:, 9] += calf_comp  # FR_calf_joint
+    joint_targets[:, 11] += calf_comp  # RR_calf_joint
+    return joint_targets
+
+def compute_height_data(scene):
+    # Get sensor/robot pose in world frame
+    pos_w = scene["ray_caster"].data.pos_w          # (N, 3)
+    quat_w = scene["ray_caster"].data.quat_w        # (N, 4) — w, x, y, z
+
+    # Ray hit positions in world frame
+    ray_hits_w = scene["ray_caster"].data.ray_hits_w  # (N, H, 3)
+    N, H, _ = ray_hits_w.shape
+
+    # Transform ray hits into the robot base frame
+    # 1. Translate: shift hits relative to sensor origin
+    hits_relative = ray_hits_w - pos_w.unsqueeze(1)   # (N, H, 3)
+
+    # 2. Rotate: apply inverse of robot quaternion to go from world → base frame
+    quat_inv_w = quat_inv(quat_w)                      # (N, 4)
+    quat_inv_w_expanded = quat_inv_w.unsqueeze(1).expand(N, H, 4)
+    hits_in_base = quat_apply(
+        quat_inv_w_expanded.reshape(N * H, 4),
+        hits_relative.reshape(N * H, 3)
+    ).reshape(N, H, 3)
+
+    # 3. The height in the base frame is the Z component (negative = below robot)
+    height_data = -hits_in_base[..., 2] - 0.28 
+    return height_data  
+
+def compute_height_data2(scene):
+    data = scene["ray_caster"].data
+    pos_w      = data.pos_w        # (N, 3)
+    quat_w     = data.quat_w       # (N, 4)  [w, x, y, z]
+    ray_hits_w = data.ray_hits_w   # (N, H, 3)
+
+    # ── translate ─────────────────────────────────────────────────────────────
+    hits_rel = ray_hits_w - pos_w.unsqueeze(1)   # (N, H, 3)  — no copy, pure broadcast
+
+    # ── rotate using inline quaternion sandwich — no reshape, no copy ─────────
+    # q_inv = [w, -x, -y, -z]
+    w  =  quat_w[:, 0:1].unsqueeze(1)   # (N, 1, 1)
+    x  = -quat_w[:, 1:2].unsqueeze(1)   # (N, 1, 1)  ← negated for inverse
+    y  = -quat_w[:, 2:3].unsqueeze(1)
+    z  = -quat_w[:, 3:4].unsqueeze(1)
+
+    vx = hits_rel[..., 0:1]   # (N, H, 1)
+    vy = hits_rel[..., 1:2]
+    vz = hits_rel[..., 2:3]
+
+    # Standard quaternion-vector rotation: q ⊗ [0,v] ⊗ q*
+    # Precompute cross product terms
+    cx = y * vz - z * vy
+    cy = z * vx - x * vz
+    cz = x * vy - y * vx
+
+    # Rotated vector components
+    rx = vx + 2.0 * (w * cx + y * vz - z * vy)
+    ry = vy + 2.0 * (w * cy + z * vx - x * vz)
+    rz = vz + 2.0 * (w * cz + x * vy - y * vx)
+
+    # ── we only need Z ────────────────────────────────────────────────────────
+    # Skip building the full (N, H, 3) tensor — compute only rz
+    rz = vz + 2.0 * (w * (x * vy - y * vx) + x * (z * vx - x * vz) - y * (y * vz - z * vy))
+
+    height_data = (-rz - 0.28).squeeze(-1)   # (N, H)
+    return height_data
+
+def make_robot_pitch_left_and_right(
+    joint_targets: torch.Tensor, sim_time: float, amplitude: float = 0.35, frequency_hz: float = 0.25
+) -> torch.Tensor:
+    """Oscillate pitch around body y-axis (front-back tilt)."""
+    phase = np.sin(2.0 * np.pi * frequency_hz * sim_time)
+    pitch_offset = amplitude * phase
+
+    # Front and rear leg pairs move oppositely to induce pitch motion.
+    joint_targets[:, 4] += pitch_offset  # FL_thigh_joint
+    joint_targets[:, 5] += pitch_offset  # FR_thigh_joint
+    joint_targets[:, 6] -= pitch_offset  # RL_thigh_joint
+    joint_targets[:, 7] -= pitch_offset  # RR_thigh_joint
+
+    calf_comp = 0.5 * pitch_offset
+    joint_targets[:, 8] -= calf_comp  # FL_calf_joint
+    joint_targets[:, 9] -= calf_comp  # FR_calf_joint
+    joint_targets[:, 10] += calf_comp  # RL_calf_joint
+    joint_targets[:, 11] += calf_comp  # RR_calf_joint
+    return joint_targets
 
 
 def run_simulator(sim: sim_utils.SimulationContext, scene: InteractiveScene):
@@ -235,7 +337,7 @@ def run_simulator(sim: sim_utils.SimulationContext, scene: InteractiveScene):
     # Simulate physics
     while simulation_app.is_running():
 
-        if count % 500 == 0:
+        if count % 5000 == 0:
             # reset counter
             count = 0
             # reset the scene entities
@@ -245,10 +347,10 @@ def run_simulator(sim: sim_utils.SimulationContext, scene: InteractiveScene):
             root_state = scene["robot"].data.default_root_state.clone()
             root_state[:, :3] += scene.env_origins
             
-            root_state[:, 1] -= 4.2
-            # root_state[:, 1] -= 10.25
+            # root_state[:, 0] -= 5.8
+            root_state[:, 0] -= 3.8
+            root_state[:, 1] -= 3.0
             
-            root_state[:, 0] += 0.7
             scene["robot"].write_root_pose_to_sim(root_state[:, :7])
             scene["robot"].write_root_velocity_to_sim(root_state[:, 7:])
             # set joint positions with some noise
@@ -282,10 +384,8 @@ def run_simulator(sim: sim_utils.SimulationContext, scene: InteractiveScene):
         #   - "RR_calf_joint"
 
         targets = scene["robot"].data.default_joint_pos.clone()
-        # targets[:,4] += 1.0 * torch.sin(torch.tensor(3 * sim_time))
-        # targets[:,5] += 1.0 * torch.sin(torch.tensor(3 * sim_time))
-        # targets[:,8] -= 1.0 * torch.sin(torch.tensor(3 * sim_time))
-        # targets[:,9] -= 1.0 * torch.sin(torch.tensor(3 * sim_time))
+        # targets = make_robot_roll_back_and_forth(targets, sim_time, amplitude=0.35)
+        # targets = make_robot_pitch_left_and_right(targets, sim_time,amplitude=0.2)
         
         # print("pos: ", scene["robot"].data.default_joint_pos.clone())        
         scene["robot"].set_joint_position_target(targets)
@@ -299,13 +399,15 @@ def run_simulator(sim: sim_utils.SimulationContext, scene: InteractiveScene):
         print("-------------------------------")
         print("Robot base height (z):", scene["robot"].data.root_pos_w[:, 2])
         # print(scene["ray_caster"])
-        height_data = (
-                scene["ray_caster"].data.pos_w[:, 2].unsqueeze(1) - scene["ray_caster"].data.ray_hits_w[..., 2]# - 0.28
-            )
+        n_rows_deleted = 5
+        height_data = compute_height_data2(scene)
+        # height_data = (
+        #         scene["ray_caster"].data.pos_w[:, 2].unsqueeze(1) - scene["ray_caster"].data.ray_hits_w[..., 2] - 0.28
+        #     )
         
 
-        sample_gaussian_and_zero_heightmap(heightmap=height_data, sigma= 6.0, N = 200)
-        height_data = height_data.reshape(args_cli.num_envs, 30, 20).flip(1,2)
+        # sample_gaussian_and_zero_heightmap(heightmap=height_data, sigma=4.0, N=30)
+        height_data = height_data.reshape(args_cli.num_envs, 15, 10).flip(1,2)
         # height_data_half =  
         # height_data2 = (
         #         scene["ray_caster"].data.pos_w[:, 2].unsqueeze(1) - scene["ray_caster"].data.ray_hits_w[..., 2] - 0.28
@@ -313,14 +415,15 @@ def run_simulator(sim: sim_utils.SimulationContext, scene: InteractiveScene):
         # print(height_data-height_data2)
         x_data = (
                 scene["ray_caster"].data.pos_w[:, 0].unsqueeze(1) - scene["ray_caster"].data.ray_hits_w[..., 0] 
-            ).reshape(args_cli.num_envs, 30, 20).flip(1,2)# .clip(-1.0, 1.0)  
+            ).reshape(args_cli.num_envs, 15, 10).flip(1,2)# .clip(-1.0, 1.0)  
         # x_data_half = x_data[:, ::2, ::2] 
         y_data = (
                 scene["ray_caster"].data.pos_w[:, 1].unsqueeze(1) - scene["ray_caster"].data.ray_hits_w[..., 1] 
             )#.reshape(args_cli.num_envs, 15, 10).flip(1,2)# .clip(-1.0, 1.0)  
         # y_data_half = y_data[:, ::2, ::2] 
         print(height_data)
-        print(torch.sum(height_data == 0.0))
+        print("base height:", scene["robot"].data.root_pos_w[:, 2])
+        # print(torch.sum(height_data == 0.0))
         # rays[torch.isinf(rays)] = 0
         
         # # Transform rays from world frame to robot frame with offset correction

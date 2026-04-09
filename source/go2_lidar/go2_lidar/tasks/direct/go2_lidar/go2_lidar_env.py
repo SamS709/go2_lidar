@@ -12,8 +12,8 @@ import isaaclab.sim as sim_utils
 from isaaclab.assets import Articulation
 from isaaclab.envs import DirectRLEnv
 from isaaclab.sensors import ContactSensor, RayCaster
-from isaaclab.managers import CommandManager
-from isaaclab.utils.math import quat_conjugate, quat_apply, quat_mul
+from isaaclab.managers import CommandManager, CurriculumManager
+from isaaclab.utils.math import quat_conjugate, quat_apply, quat_mul, quat_inv
 
 from .go2_lidar_env_cfg import Go2LidarFlatEnvCfg, Go2LidarRoughEnvCfg
 
@@ -36,8 +36,9 @@ class Go2LidarEnv(DirectRLEnv):
         )
 
         # X/Y linear velocity and yaw angular velocity commands
-        self._commands = CommandManager(self.cfg.commands, self)
-
+        self.command_manager = CommandManager(self.cfg.commands, self)
+        self.curriculum_manager = CurriculumManager(self.cfg.curriculum, self)
+        
         # Logging
         self._episode_sums = {
             key: torch.zeros(self.num_envs, dtype=torch.float, device=self.device)
@@ -119,12 +120,39 @@ class Go2LidarEnv(DirectRLEnv):
         light_cfg.func("/World/Light", light_cfg)
 
     def _pre_physics_step(self, actions: torch.Tensor):
-        self._commands.compute(dt=self.step_dt)
+        self.command_manager.compute(dt=self.step_dt)
+        
         self._actions = actions.clone()
         self._processed_actions = self.cfg.action_scale * self._actions + self._robot.data.default_joint_pos
 
     def _apply_action(self):
         self._robot.set_joint_position_target(self._processed_actions)
+        # self._robot.set_joint_position_target(self._robot.data.default_joint_pos)    
+        
+    def _compute_height_data(self):
+        # Get sensor/robot pose in world frame
+        pos_w = self._height_scanner.data.pos_w          # (N, 3)
+        quat_w = self._height_scanner.data.quat_w        # (N, 4) — w, x, y, z
+
+        # Ray hit positions in world frame
+        ray_hits_w = self._height_scanner.data.ray_hits_w  # (N, H, 3)
+        N, H, _ = ray_hits_w.shape
+
+        # Transform ray hits into the robot base frame
+        # 1. Translate: shift hits relative to sensor origin
+        hits_relative = ray_hits_w - pos_w.unsqueeze(1)   # (N, H, 3)
+
+        # 2. Rotate: apply inverse of robot quaternion to go from world → base frame
+        quat_inv_w = quat_inv(quat_w)                      # (N, 4)
+        quat_inv_w_expanded = quat_inv_w.unsqueeze(1).expand(N, H, 4)
+        hits_in_base = quat_apply(
+            quat_inv_w_expanded.reshape(N * H, 4),
+            hits_relative.reshape(N * H, 3)
+        ).reshape(N, H, 3)
+
+        # 3. The height in the base frame is the Z component (negative = below robot)
+        height_data = -hits_in_base[..., 2] - 0.5 
+        return height_data      
     
     def _process_heightmap(self, height_map):
         sampled_indices = torch.multinomial(self.gaussian_prob_heightmap, self.cfg.n_zeros, replacement=True)
@@ -136,16 +164,14 @@ class Go2LidarEnv(DirectRLEnv):
         height_data = None
         height_data_actor = None
         if isinstance(self.cfg, Go2LidarRoughEnvCfg):
-            height_data = (
-                self._height_scanner.data.pos_w[:, 2].unsqueeze(1) - self._height_scanner.data.ray_hits_w[..., 2] - 0.28
-            ).clip(-1.0, 1.0) 
+            height_data = self._compute_height_data()
             height_data_actor = height_data + (2.0 * torch.rand_like(height_data) - 1.0) * float(0.01) * self.cfg.randomize
             
             height_data_actor = self._process_heightmap(height_data_actor) 
             height_data = self._sanitize_tensor(height_data, "height_data", clamp_abs=10.0)
             height_data_actor = self._sanitize_tensor(height_data_actor, "height_data_actor", clamp_abs=10.0)
             # torch.set_printoptions(precision=2, linewidth=1000, sci_mode=False)
-            # print(height_data_actor.reshape(self.num_envs, 15, 10).flip(1,2))            
+            # print(height_data.reshape(self.num_envs, 15, 10).flip(1,2))            
             
             
             # x_data = (self._height_scanner.data.pos_w[:, 0].unsqueeze(1) - self._height_scanner.data.ray_hits_w[..., 0]).reshape(self.num_envs, 15, 10).flip(1,2)
@@ -160,7 +186,7 @@ class Go2LidarEnv(DirectRLEnv):
                 for tensor in (
                     self._robot.data.root_ang_vel_b + (2.0 * torch.rand_like(self._robot.data.root_lin_vel_b) - 1.0) * float(0.1) * self.cfg.randomize,
                     self._robot.data.projected_gravity_b + (2.0 * torch.rand_like(self._robot.data.projected_gravity_b) - 1.0) * float(0.05) * self.cfg.randomize,
-                    self._commands.get_command("base_velocity"),
+                    self.command_manager.get_command("base_velocity"),
                     self._robot.data.joint_pos - self._robot.data.default_joint_pos + (2.0 * torch.rand_like(self._robot.data.default_joint_pos) - 1.0) * float(0.01) * self.cfg.randomize,
                     self._robot.data.joint_vel + (2.0 * torch.rand_like(self._robot.data.joint_vel) - 1.0) * float(0.1) * self.cfg.randomize,
                     height_data_actor,
@@ -179,7 +205,7 @@ class Go2LidarEnv(DirectRLEnv):
                     self._robot.data.root_lin_vel_b,
                     self._robot.data.root_ang_vel_b,
                     self._robot.data.projected_gravity_b,
-                    self._commands.get_command("base_velocity"),
+                    self.command_manager.get_command("base_velocity"),
                     self._robot.data.joint_pos - self._robot.data.default_joint_pos,
                     self._robot.data.joint_vel,
                     foot_contacts,
@@ -198,10 +224,10 @@ class Go2LidarEnv(DirectRLEnv):
 
     def _get_rewards(self) -> torch.Tensor:
         # linear velocity tracking
-        lin_vel_error = torch.sum(torch.square(self._commands.get_command("base_velocity")[:, :2] - self._robot.data.root_lin_vel_b[:, :2]), dim=1)
+        lin_vel_error = torch.sum(torch.square(self.command_manager.get_command("base_velocity")[:, :2] - self._robot.data.root_lin_vel_b[:, :2]), dim=1)
         lin_vel_error_mapped = torch.exp(-lin_vel_error / 0.25)
         # yaw rate tracking
-        yaw_rate_error = torch.square(self._commands.get_command("base_velocity")[:, 2] - self._robot.data.root_ang_vel_b[:, 2])
+        yaw_rate_error = torch.square(self.command_manager.get_command("base_velocity")[:, 2] - self._robot.data.root_ang_vel_b[:, 2])
         yaw_rate_error_mapped = torch.exp(-yaw_rate_error / 0.25)
         # z velocity tracking
         z_vel_error = torch.square(self._robot.data.root_lin_vel_b[:, 2])
@@ -217,7 +243,7 @@ class Go2LidarEnv(DirectRLEnv):
         first_contact = self._contact_sensor.compute_first_contact(self.step_dt)[:, self._feet_ids]
         last_air_time = self._contact_sensor.data.last_air_time[:, self._feet_ids]
         air_time = torch.sum(torch.clamp(last_air_time - 0.5, min=0.0) * first_contact, dim=1) * (
-            torch.norm(self._commands.get_command("base_velocity")[:, :2], dim=1) > 0.1
+            torch.norm(self.command_manager.get_command("base_velocity")[:, :2], dim=1) > 0.1
         )
         
         # undesired contacts
@@ -229,7 +255,7 @@ class Go2LidarEnv(DirectRLEnv):
         # flat orientation
         flat_orientation = torch.sum(torch.square(self._robot.data.projected_gravity_b[:, :2]), dim=1)
         # stay around default pos:        
-        cmd = torch.linalg.norm(self._commands.get_command("base_velocity"), dim=1)
+        cmd = torch.linalg.norm(self.command_manager.get_command("base_velocity"), dim=1)
         body_vel = torch.linalg.norm(self._robot.data.root_lin_vel_b[:, :2], dim=1)
         joint_deviation = torch.sum(torch.square(self._robot.data.joint_pos - self._robot.data.default_joint_pos), dim=1)
         is_moving = torch.logical_or(cmd > 0.0, body_vel > self.cfg.velocity_threshold)
@@ -264,6 +290,7 @@ class Go2LidarEnv(DirectRLEnv):
     def _reset_idx(self, env_ids: torch.Tensor | None):
         if env_ids is None or len(env_ids) == self.num_envs:
             env_ids = self._robot._ALL_INDICES
+        self.curriculum_manager.compute(env_ids=env_ids)
         self._robot.reset(env_ids)
         super()._reset_idx(env_ids)
         if len(env_ids) == self.num_envs:
@@ -272,14 +299,14 @@ class Go2LidarEnv(DirectRLEnv):
         self._actions[env_ids] = 0.0
         self._previous_actions[env_ids] = 0.0
         # Sample new commands
-        self._commands.reset(env_ids)
+        self.command_manager.reset(env_ids)
         # Reset robot state
         joint_pos = self._robot.data.default_joint_pos[env_ids]
         joint_vel = self._robot.data.default_joint_vel[env_ids]
         default_root_state = self._robot.data.default_root_state[env_ids]
         default_root_state[:, :3] += self._terrain.env_origins[env_ids]
         # Add x-axis offset to spawn position
-        # default_root_state[:, 0] += 0.5  # Offset in meters (change this value as needed)
+        # default_root_state[:, 0] -= 3.0  # Offset in meters (change this value as needed)
         # # Rotate 45 degrees around z-axis at spawn
         # import math
         # angle = math.pi / 4  # 45 degrees

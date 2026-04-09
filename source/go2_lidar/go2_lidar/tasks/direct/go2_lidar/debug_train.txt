@@ -1092,7 +1092,7 @@ Retrained from scratch
 python scripts/rsl_rl/train.py --task Isaac-Velocity-Rough-Go2-Lidar-Direct-v0 --num_envs 8192 --headless
 ###########################################################################################################################################################
 ###########################################################################################################################################################
-log: logs/rsl_rl/go2-lidar/2026-04-03_14-21-50
+log: logs/rsl_rl/go2-lidar/2026-04-05_11-11-04
 KEY CHANGES:  
 Fixed error std <= 0:
     - Check rewards and obs values (no inf or NaN)
@@ -1101,7 +1101,7 @@ Fixed error std <= 0:
 REWARDS / CFG:  
 ###########################################################################################################################################################
 
-    SAME
+    added curriculum
 
     
 COMMANDS:
@@ -1122,10 +1122,10 @@ OBSERVATIONS:
 
 RESULTS:
 ###########################################################################################################################################################
-Works ok but looks like it relies on the hit between foot and staitr to walk upstaires.
-I want it to take in account the height data for that, but the resolution might be too low for the grid height
-Idea: The resolution is not the pb: it works well in the isaaclab's env with 0.1.
-Solution: Curriculum
+Works ok but looks like it relies on the hit between foot and staitr to walk upstairs, in the sim2sim gazebo
+Solution: try to make the two lidar obs match by 
+add -0.5 of offset to lidar obs
+
 
 
 

@@ -10,6 +10,7 @@ from isaaclab.assets import ArticulationCfg
 from isaaclab.envs import DirectRLEnvCfg
 from isaaclab.managers import EventTermCfg as EventTerm
 from isaaclab.managers import SceneEntityCfg
+from isaaclab.managers import CurriculumManager, CurriculumTermCfg
 from isaaclab.scene import InteractiveSceneCfg
 from isaaclab.sensors import ContactSensorCfg, RayCasterCfg, patterns
 from isaaclab.sim import SimulationCfg
@@ -24,6 +25,16 @@ from isaaclab.terrains.config.rough import ROUGH_TERRAINS_CFG  # isort: skip
 import isaaclab.terrains as terrain_gen
 
 from isaaclab.terrains.terrain_generator_cfg import TerrainGeneratorCfg
+from .utils import terrain_levels_vel
+
+
+@configclass
+class CurriculumCfg:
+    """Curriculum terms for the MDP."""
+    CurriculumTermCfg(
+        func=terrain_levels_vel,   # the standard manager-based term
+        params={"asset_cfg": SceneEntityCfg("robot")},
+    )
 
 
 @configclass
@@ -34,11 +45,12 @@ class CommandsCfg:
         asset_name="robot",
         resampling_time_range=(10.0, 10.0),
         rel_standing_envs=0.02,
-        heading_command=True,
+        heading_command=False,
         heading_control_stiffness=0.5,
         debug_vis=False,
         ranges=mdp.UniformVelocityCommandCfg.Ranges(
-            lin_vel_x=(0.0, 1.0), lin_vel_y=(-0.5, 0.5), ang_vel_z=(-1.0, 1.0), heading=(-3.14, 3.14)
+            # lin_vel_x=(0.0, 1.0), lin_vel_y=(-0.5, 0.5), ang_vel_z=(-1.0, 1.0), heading=(-3.14, 3.14)
+            lin_vel_x=(0.5, 0.5), lin_vel_y=(-0.0, 0.0), ang_vel_z=(-0.0, 0.0), heading=(-3.14, 3.14)
         ),
     )
     
@@ -195,40 +207,42 @@ class Go2LidarRoughEnvCfg(Go2LidarFlatEnvCfg):
     # env
     observation_space = 247
     
+    curriculum: CurriculumCfg = CurriculumCfg()
+    
     TERRAINS_CFG = TerrainGeneratorCfg(
         size=(8.0, 8.0),
         border_width=20.0,
-        num_rows=2,
-        num_cols=4,
+        num_rows=1,
+        num_cols=1,
         horizontal_scale=0.1,
         vertical_scale=0.005,
         slope_threshold=0.75,
         use_cache=False,
         sub_terrains={
-            "random_rough": terrain_gen.HfRandomUniformTerrainCfg(
-                proportion=0.2, noise_range=(0.01, 0.06), noise_step=0.01, border_width=0.25
-            ),
-            "pyramid_stairs": terrain_gen.MeshPyramidStairsTerrainCfg(
-                proportion=0.4,
+            # "random_rough": terrain_gen.HfRandomUniformTerrainCfg(
+            #     proportion=0.2, noise_range=(0.01, 0.06), noise_step=0.01, border_width=0.25
+            # ),
+            "pyramid_stairs_inv": terrain_gen.MeshPyramidStairsTerrainCfg(
+                proportion=1.0,
                 step_height_range=(0.05, 0.15),
                 step_width=0.3,
                 platform_width=2.0,
                 border_width=1.0,
                 holes=False,
             ),
-            "pyramid_stairs_inv": terrain_gen.MeshInvertedPyramidStairsTerrainCfg(
-                proportion=0.4,
-                step_height_range=(0.05, 0.15),
-                step_width=0.3,
-                platform_width=2.0,
-                border_width=1.0,
-                holes=False,
-            )
+            # "pyramid_stairs_inv": terrain_gen.MeshInvertedPyramidStairsTerrainCfg(
+            #     proportion=0.4,
+            #     step_height_range=(0.05, 0.15),
+            #     step_width=0.3,
+            #     platform_width=2.0,
+            #     border_width=1.0,
+            #     holes=False,
+            # )
         },
     )
-    # ROUGH_TERRAINS_CFG.num_cols = 2
-    # ROUGH_TERRAINS_CFG.num_rows = 5
-    ROUGH_TERRAINS_CFG.sub_terrains["pyramid_stairs_inv"].step_height_range = (0.1, 0.1)
+    # ROUGH_TERRAINS_CFG.num_cols = 1
+    # ROUGH_TERRAINS_CFG.num_rows = 1
+    # ROUGH_TERRAINS_CFG.sub_terrains["pyramid_stairs_inv"].step_height_range = (0.1, 0.1)
     
     ROUGH_TERRAINS_CFG.sub_terrains["boxes"].grid_height_range = (0.025, 0.1)
     ROUGH_TERRAINS_CFG.sub_terrains["random_rough"].noise_range = (0.01, 0.06)
@@ -300,13 +314,13 @@ class Go2LidarRoughEnvCfg(Go2LidarFlatEnvCfg):
 
     sigma = 4.00
     n_zeros = 30
-    # the heightmap is 1.5 * 1, offseted by lidar offset + 0.25 on x such that it detects 1 metter above lidar and 0.5 meters behind
+    # the heightmap is 1.5 * 1, offseted by lidar offset + 0.25 on x such that it detects 1 metter in front of and 0.5 meters behind the lidar frame
     # on the real robot, from the lidar frame: grid 0.5 meters left and right and 1 meter front and 0.5 meters behind
     height_scanner = RayCasterCfg(
         update_period=1 / 20,
         prim_path="/World/envs/env_.*/Robot/base",
-        offset=RayCasterCfg.OffsetCfg(pos=(0.28945 + 0.25, 0.0, -0.04682)),
-        ray_alignment="yaw",
+        offset=RayCasterCfg.OffsetCfg(pos=(0.28945 + 0.25, 0.0, 0.5)),
+        # ray_alignment="base",
         pattern_cfg=patterns.GridPatternCfg(resolution=0.1, size=[1.4, 0.9], ordering = "yx"),
         debug_vis=False,
         mesh_prim_paths=["/World/ground"],
