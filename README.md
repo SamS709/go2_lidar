@@ -6,6 +6,9 @@
 
 # Lidar integration [BETA]
 
+<img src="/images/gazebo_lidar_rl_compressed.gif" alt="Gazebo lidar RL demo" width="400" />
+
+
 ## Overview
 
 ### This project is a part of the [go2_isaaclab](#https://github.com/SamS709/go2_lidar) project which aims to make a Sim2Real for Unitree Go2 quadruped locomotion
