@@ -1125,6 +1125,89 @@ RESULTS:
 Works ok but looks like it relies on the hit between foot and staitr to walk upstairs, in the sim2sim gazebo
 Solution: try to make the two lidar obs match by 
 add -0.5 of offset to lidar obs
+Cmds changed (more diversity even if not used after)
+
+13.
+6144 envs
+Retrained from scratch
+python scripts/rsl_rl/train.py --task Isaac-Velocity-Rough-Go2-Lidar-Direct-v0 --num_envs 6144 --headless
+###########################################################################################################################################################
+###########################################################################################################################################################
+log: logs/rsl_rl/go2-lidar/2026-04-05_11-11-04
+KEY CHANGES:  
+height_map - 0.5 (instead of height_map - 0.28)
+Added rotation robot to the heighmap (just  like in the real one) with compute_heightmap
+Cmds changed (more diversity even if not used after)
+
+REWARDS / CFG:  
+###########################################################################################################################################################
+
+
+    
+COMMANDS:
+###########################################################################################################################################################
+
+    
+@configclass
+class CommandsCfg:
+    """Command specifications for the MDP."""
+
+    base_velocity = mdp.UniformVelocityCommandCfg(
+        asset_name="robot",
+        resampling_time_range=(10.0, 10.0),
+        rel_standing_envs=0.02,
+        heading_command=True,
+        heading_control_stiffness=0.5,
+        debug_vis=False,
+        ranges=mdp.UniformVelocityCommandCfg.Ranges(
+            lin_vel_x=(-1.0, 1.0), lin_vel_y=(-1.0, 1.0), ang_vel_z=(-1.0, 1.0), heading=(-3.14, 3.14)
+            # lin_vel_x=(0.5, 0.5), lin_vel_y=(-0.0, 0.0), ang_vel_z=(-0.0, 0.0), heading=(-3.14, 3.14)
+        ),
+    )
+    
+    
+
+RANDOMIZATION:
+###########################################################################################################################################################
+
+    SAME
+
+OBSERVATIONS:
+###########################################################################################################################################################
+
+   def _compute_height_data(self):
+        # Get sensor/robot pose in world frame
+        pos_w = self._height_scanner.data.pos_w          # (N, 3)
+        quat_w = self._height_scanner.data.quat_w        # (N, 4) — w, x, y, z
+
+        # Ray hit positions in world frame
+        ray_hits_w = self._height_scanner.data.ray_hits_w  # (N, H, 3)
+        N, H, _ = ray_hits_w.shape
+
+        # Transform ray hits into the robot base frame
+        # 1. Translate: shift hits relative to sensor origin
+        hits_relative = ray_hits_w - pos_w.unsqueeze(1)   # (N, H, 3)
+
+        # 2. Rotate: apply inverse of robot quaternion to go from world → base frame
+        quat_inv_w = quat_inv(quat_w)                      # (N, 4)
+        quat_inv_w_expanded = quat_inv_w.unsqueeze(1).expand(N, H, 4)
+        hits_in_base = quat_apply(
+            quat_inv_w_expanded.reshape(N * H, 4),
+            hits_relative.reshape(N * H, 3)
+        ).reshape(N, H, 3)
+
+        # 3. The height in the base frame is the Z component (negative = below robot)
+        height_data = -hits_in_base[..., 2] - 0.5 
+        return height_data      
+
+    height_map = self.compute_heightmap()
+
+RESULTS:
+###########################################################################################################################################################
+Works ok but looks like it relies on the hit between foot and staitr to walk upstairs, in the sim2sim gazebo
+Solution: try to make the two lidar obs match by 
+add -0.5 of offset to lidar obs
+Cmds changed (more diversity even if not used after)
 
 
 

@@ -60,7 +60,9 @@ class Go2LidarEnv(DirectRLEnv):
         self._base_id, _ = self._contact_sensor.find_bodies("base")
         self._feet_ids, _ = self._contact_sensor.find_bodies(".*_foot")
         self._thigh_ids, _ = self._contact_sensor.find_bodies(".*_thigh")
+        self._calf_ids, _ = self._contact_sensor.find_bodies(".*_calf")
         self._undesired_contact_body_ids = self._thigh_ids
+        self._body_contact_info_teacher = self._thigh_ids + self._calf_ids
         self._finite_warn_counter = 0
         print("UNDESIRED CONTACTS: Thighs and Calfs")
         print("IDS: ", self._undesired_contact_body_ids)

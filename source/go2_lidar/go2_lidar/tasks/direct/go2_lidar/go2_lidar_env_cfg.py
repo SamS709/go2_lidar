@@ -44,13 +44,13 @@ class CommandsCfg:
     base_velocity = mdp.UniformVelocityCommandCfg(
         asset_name="robot",
         resampling_time_range=(10.0, 10.0),
-        rel_standing_envs=0.02,
-        heading_command=False,
+        # rel_standing_envs=0.02,
+        heading_command=True,
         heading_control_stiffness=0.5,
         debug_vis=False,
         ranges=mdp.UniformVelocityCommandCfg.Ranges(
-            # lin_vel_x=(0.0, 1.0), lin_vel_y=(-0.5, 0.5), ang_vel_z=(-1.0, 1.0), heading=(-3.14, 3.14)
-            lin_vel_x=(0.5, 0.5), lin_vel_y=(-0.0, 0.0), ang_vel_z=(-0.0, 0.0), heading=(-3.14, 3.14)
+            lin_vel_x=(-1.0, 1.0), lin_vel_y=(-1.0, 1.0), ang_vel_z=(-1.0, 1.0), heading=(-3.14, 3.14)
+            # lin_vel_x=(0.5, 0.5), lin_vel_y=(-0.0, 0.0), ang_vel_z=(-0.0, 0.0), heading=(-3.14, 3.14)
         ),
     )
     
@@ -240,8 +240,8 @@ class Go2LidarRoughEnvCfg(Go2LidarFlatEnvCfg):
             # )
         },
     )
-    # ROUGH_TERRAINS_CFG.num_cols = 1
-    # ROUGH_TERRAINS_CFG.num_rows = 1
+    # ROUGH_TERRAINS_CFG.num_cols = 2
+    # ROUGH_TERRAINS_CFG.num_rows = 3
     # ROUGH_TERRAINS_CFG.sub_terrains["pyramid_stairs_inv"].step_height_range = (0.1, 0.1)
     
     ROUGH_TERRAINS_CFG.sub_terrains["boxes"].grid_height_range = (0.025, 0.1)

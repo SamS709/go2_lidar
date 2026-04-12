@@ -39,3 +39,13 @@ gym.register(
     },
 )
 
+gym.register(
+    id="Isaac-Velocity-Rough-Go2-Lidar-Distillation-Direct-v0",
+    entry_point=f"{__name__}.go2_distillation_env:Go2TeacherStudentEnv",
+    disable_env_checker=True,
+    kwargs={
+        "env_cfg_entry_point": f"{__name__}.go2_distillation_env_cfg:Go2TeacherStudentEnvCfg",
+        "rsl_rl_cfg_entry_point": f"{agents.__name__}.rsl_rl_ppo_distillation_cfg:Go2LidarDistillationCnnPPORunnerCfg",
+    },
+)
+
