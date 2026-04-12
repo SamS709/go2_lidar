@@ -11,7 +11,7 @@
 
 ## Overview
 
-<p style="font-size: 1.2rem;"> This project is a part of the [go2_isaaclab](#https://github.com/SamS709/go2_lidar) project which aims to make a Sim2Real for Unitree Go2 quadruped locomotion </p>
+<p style="font-size: 1.2rem;"> This project is a part of the <a href="https://github.com/SamS709/go2_lidar">go2_isaaclab</a> project which aims to make a Sim2Real for Unitree Go2 quadruped locomotion </p>
 
 The goal of this repo is to add the lidar of the go2 as a perception module so that the robot can walk on rough environments. This is done by adding the observations of the 3D lidar that comes with the robot.
 
