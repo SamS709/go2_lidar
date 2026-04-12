@@ -85,5 +85,6 @@ See the instructions given [here](https://github.com/hucebot/huro/tree/sami).
 
 The result (for the moment):
 
+<img src="/images/gazebo_lidar_rl_compressed.gif" alt="Gazebo lidar RL demo" width="800" />
 
-<img src="/docs/gazebo_lidar_rl_compressed.gif" alt="Gazebo lidar RL demo" width="800" />
+## 3) Sim2Real
