@@ -8,22 +8,18 @@
 
 ## Overview
 
-This project is a part of the [go2_isaaclab](#https://github.com/SamS709/go2_lidar) project which aims to make a Sim2Real for Unitree Go2 quadruped locomotion
+### This project is a part of the [go2_isaaclab](#https://github.com/SamS709/go2_lidar) project which aims to make a Sim2Real for Unitree Go2 quadruped locomotion
 
-The goal of this repo is to add the lidar of the go2 as a perception module so that the robot can walk on rough environments.
+The goal of this repo is to add the lidar of the go2 as a perception module so that the robot can walk on rough environments. This is done by adding the observations of the 3D lidar that comes with the robot.
 
 **Key Features:**
 
 1) [**Training**](#1-training)
-    - [`a) Train`](#a-train) a policy for go2 robot using direct based environnement. The policy follows the commands sent by the user: linear (x/y) velocitiezs // angular (z) velocity // base height.
-    - [`b) Test`](#b-test) it using keyboard in Isaacsim.
+    - A policy for go2 robot using direct based environnement. The policy follows the commands sent by the user: linear (x/y) velocitiezs // angular (z) velocity // base height.
 2) [**Sim2Sim**](#2-sim2sim)
-    - [`a) Newton`](#a-newton) from PhysX to Newton using Newton branch of Isaaclab repo.
-    - [`b) Unitree_mujoco`](#b-unitree_mujoco) from PhysX to Mujoco using the unitree_mujoco repo.
-    - [`c) Huro`](#c-huro) sim2sim in huro environment (github of a researcher at LORIA).
+    - Sim2Sim in Huro environment (github of a researcher at LORIA).
 3) [**Sim2Real**](#3-sim2real)
-    - [`a) Unitree_python_sdk2`](#a-unitree_python_sdk2) sim2real in unitree_python_sdk2 using proprietary dds developed by unitree.
-    - [`b) Huro`](#b-huro) sim2real in huro using ros2.
+    - Sim2Real in huro using ros2.
 
 
 ## Installation
@@ -38,12 +34,14 @@ The goal of this repo is to add the lidar of the go2 as a perception module so t
   
 - Using a python interpreter that has Isaac Lab installed, install the library in editable mode using:
 
-
+    ```bash
     cd go2_isaaclab
     python -m pip install -e source/go2_lidar
     ```
 
 ## 1) Training
+
+To see how the lidar observations are computed, go to [lidar_info.md](lidar_info.md).
 
 ### a) Train
 
@@ -61,7 +59,7 @@ Make sure you are in your the classic Isaac Lab Python environment (not the Newt
 - Run the trained policy :
 
     ```bash
-    python scripts/rsl_rl/play.py --task Isaac-Velocity-Go2-Asymmetric-v0 --num_envs 8 
+    python scripts/rsl_rl/play.py --task Isaac-Velocity-Rough-Go2-Lidar-Direct-v0 --num_envs 512
     ```
 
 - Control the robot with the keyboard (here, a pretrained checkpoint is used for convenience):
@@ -80,21 +78,12 @@ Make sure you are in your the classic Isaac Lab Python environment (not the Newt
 
 ## 2) Sim2Sim
 
-The problem for the sim2sim including a lidar is that there is no other sim providing Lidars.
+Using HURO repository.
+Simulated in gazebo.
 
-Then, I will just try the trained policies on flat terrains with a mock height_map.
+See the instructions given [here](https://github.com/hucebot/huro/tree/sami).
 
-This mock height map is built this way (with offset = 0.28 fixed at training time): 
-height_map = torch.zeros(x_length, y_length) - offset + robot_base_height
+The result (for the moment):
 
-Then, I am only able to see if the policy is ok on flat terrains, whih is the case: 
 
-In Unitree mujoco environment:
-
-<img src="images/Unitree_MuJoCo.png" width="400"/>
-
-In Newton's Isaaclab's branch environment:
-
-<img src="images/Newton_MuJoCo.png" width="400"/>
-
-For the moment
+<img src="/docs/gazebo_lidar_rl_compressed.gif" alt="Gazebo lidar RL demo" width="800" />

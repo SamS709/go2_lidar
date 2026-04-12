@@ -31,11 +31,11 @@ tensor([
 
 This corresponds to this picture in the Simulation:
 
-<img src = "height_map_lidar.png" width="300"/> 
+<img src = "images/height_map_lidar.png" width="300"/> 
 
 The zeros for x>0.45 corresponds to points that the lidar doesnt detect bc they are higher than its position in the simulation.
 
 Indeed, here is a picture and the corresponding heightmap for lower stairs
 
-<img src = "height_map_lidar_small.png" height="100"/> <img src = "height_map_lidar_small_tensor.png" height="100"/> 
+<img src = "images/height_map_lidar_small.png" height="100"/> <img src = "images/height_map_lidar_small_tensor.png" height="100"/> 
 
