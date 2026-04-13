@@ -21,22 +21,7 @@ from .go2_lidar_env_cfg import Go2LidarRoughEnvCfg
 class Go2TeacherStudentEnvCfg(Go2LidarRoughEnvCfg):
     """
     Configuration for teacher-student distillation.
-    
-    Key differences from standard training:
-    - observation_space defines STUDENT observation size (reduced)
-    - teacher_observation_space defines TEACHER observation size (privileged/full)
-    - The environment must return dict with both "policy" (student) and "teacher" keys
     """
-    
-    # Student observations for CNN policy:
-    # - proprio: 45 dims
-    # - grid: (1, 15, 10)
-    observation_space = spaces.Dict(
-        {
-            "proprio": spaces.Box(low=float("-inf"), high=float("inf"), shape=(45,)),
-            "grid": spaces.Box(low=float("-inf"), high=float("inf"), shape=(1, 15, 10)),
-        }
-    )
     
     # Teacher sees student state + full clean heightmap + privileged terms.
     teacher_observation_space = 210
@@ -44,4 +29,4 @@ class Go2TeacherStudentEnvCfg(Go2LidarRoughEnvCfg):
     def __post_init__(self):
         super().__post_init__()
         # Reduce number of environments for distillation training
-        self.scene.num_envs = 256
+        self.scene.num_envs = 4096

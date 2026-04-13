@@ -1,49 +1,61 @@
-# Copyright (c) 2022-2026, The Isaac Lab Project Developers.
+# Copyright (c) 2022-2026, The Isaac Lab Project Developers (https://github.com/isaac-sim/IsaacLab/blob/main/CONTRIBUTORS.md).
 # All rights reserved.
 #
 # SPDX-License-Identifier: BSD-3-Clause
 
 from isaaclab.utils import configclass
 
-from isaaclab_rl.rsl_rl import RslRlOnPolicyRunnerCfg, RslRlPpoActorCriticCfg, RslRlPpoAlgorithmCfg
+from isaaclab_rl.rsl_rl import (
+    RslRlDistillationAlgorithmCfg,
+    RslRlDistillationRunnerCfg,
+    RslRlMLPModelCfg,
+    RslRlRNNModelCfg,
+)
 
 
 @configclass
-class Go2LidarDistillationCnnPPORunnerCfg(RslRlOnPolicyRunnerCfg):
-    """PPO config for distillation env using a CNN policy over (1, 15, 10) heightmaps."""
-
-    num_steps_per_env = 24
+class Go2LidarDistillationRunnerCfg(RslRlDistillationRunnerCfg):
+    num_steps_per_env = 120
     max_iterations = 50000
     save_interval = 50
-    experiment_name = "go2_lidar_distillation"
-    run_name = "cnn_policy"
-
-    # Both actor and critic consume the structured "policy" observation group.
-    obs_groups = {"policy": ["policy"], "critic": ["policy"]}
-
-    policy = RslRlPpoActorCriticCfg(
-        # eval(...) is executed inside rsl_rl.runners.on_policy_runner.
-        class_name='__import__("go2_lidar.tasks.direct.go2_lidar.networks.LidarNet", fromlist=["ActorCriticCNN"]).ActorCriticCNN',
-        init_noise_std=1.0,
-        noise_std_type="log",
-        actor_obs_normalization=False,
-        critic_obs_normalization=False,
-        actor_hidden_dims=[256, 128],
-        critic_hidden_dims=[256, 128],
+    experiment_name = "go2_distillation"
+    obs_groups = {"policy": ["policy"], "teacher": ["teacher"]}
+    student = RslRlMLPModelCfg(
+        actor_hidden_dims=[512, 256, 128],
         activation="elu",
+        obs_normalization=False,
+        distribution_cfg=RslRlMLPModelCfg.GaussianDistributionCfg(init_std=0.1),
+    )
+    teacher = RslRlMLPModelCfg(
+        actor_hidden_dims=[512, 256, 128],
+        activation="elu",
+        obs_normalization=False,
+        distribution_cfg=RslRlMLPModelCfg.GaussianDistributionCfg(init_std=0.1),
+    )
+    algorithm = RslRlDistillationAlgorithmCfg(
+        num_learning_epochs=2,
+        learning_rate=1.0e-3,
+        gradient_length=15,
     )
 
-    algorithm = RslRlPpoAlgorithmCfg(
-        value_loss_coef=1.0,
-        use_clipped_value_loss=True,
-        clip_param=0.2,
-        entropy_coef=0.01,
-        num_learning_epochs=5,
-        num_mini_batches=4,
-        learning_rate=1.0e-3,
-        schedule="adaptive",
-        gamma=0.99,
-        lam=0.95,
-        desired_kl=0.01,
-        max_grad_norm=1.0,
+
+@configclass
+class Go2LidarDistillationRunnerRecurrentCfg(Go2LidarDistillationRunnerCfg):
+    student = RslRlRNNModelCfg(
+        actor_hidden_dims=[512, 256, 128],
+        activation="elu",
+        obs_normalization=False,
+        distribution_cfg=RslRlMLPModelCfg.GaussianDistributionCfg(init_std=0.1),
+        rnn_type="lstm",
+        rnn_hidden_dim=256,
+        rnn_num_layers=1,
+    )
+    teacher = RslRlRNNModelCfg(
+        actor_hidden_dims=[512, 256, 128],
+        activation="elu",
+        obs_normalization=False,
+        distribution_cfg=RslRlMLPModelCfg.GaussianDistributionCfg(init_std=0.1),
+        rnn_type="lstm",
+        rnn_hidden_dim=256,
+        rnn_num_layers=1,
     )

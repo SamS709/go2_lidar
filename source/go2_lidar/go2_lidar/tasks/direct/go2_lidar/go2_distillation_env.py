@@ -52,6 +52,7 @@ class Go2TeacherStudentEnv(Go2LidarEnv):
                 joint_pos_rel
                 + (2.0 * torch.rand_like(self._robot.data.default_joint_pos) - 1.0) * float(0.01) * self.cfg.randomize,
                 joint_vel + (2.0 * torch.rand_like(self._robot.data.joint_vel) - 1.0) * float(0.1) * self.cfg.randomize,
+                height_data_student,
                 self._actions,
             ],
             dim=-1,
@@ -83,14 +84,28 @@ class Go2TeacherStudentEnv(Go2LidarEnv):
         height_data_student = self._sanitize_tensor(height_data_student, "height_data_actor", clamp_abs=10.0)
         
         base_ang_vel = self._robot.data.root_ang_vel_b
-        projected_gravity = self._robot.data.projected_gravity_b 
-        joint_pos_rel = (self._robot.data.joint_pos - self._robot.data.default_joint_pos) 
-        joint_vel = self._robot.data.joint_vel    
+        projected_gravity = self._robot.data.projected_gravity_b
+        joint_pos_rel = self._robot.data.joint_pos - self._robot.data.default_joint_pos
+        joint_vel = self._robot.data.joint_vel
         velocity_commands = self.command_manager.get_command("base_velocity")
-        self._previous_actions = self._actions.clone()
-        student_obs = self._build_policy_obs(height_data_student)
         
-        base_lin_vel = self._robot.data.root_lin_vel_b 
+        student_obs = torch.cat(
+            [
+                base_ang_vel
+                + (2.0 * torch.rand_like(self._robot.data.root_lin_vel_b) - 1.0) * float(0.1) * self.cfg.randomize,
+                projected_gravity
+                + (2.0 * torch.rand_like(self._robot.data.projected_gravity_b) - 1.0) * float(0.05) * self.cfg.randomize,
+                velocity_commands,
+                joint_pos_rel
+                + (2.0 * torch.rand_like(self._robot.data.default_joint_pos) - 1.0) * float(0.01) * self.cfg.randomize,
+                joint_vel + (2.0 * torch.rand_like(self._robot.data.joint_vel) - 1.0) * float(0.1) * self.cfg.randomize,
+                height_data_student,
+                self._actions,
+            ],
+            dim=-1,
+        )
+        
+                
         foot_contacts = (torch.norm(self._contact_sensor.data.net_forces_w[:, self._feet_ids], dim=-1) > 1.0).float()
         is_contact = (
             torch.max(torch.norm(self._contact_sensor.data.net_forces_w_history[:, :, self._body_contact_info_teacher], dim=-1), dim=1)[0] > 1.0
@@ -108,11 +123,11 @@ class Go2TeacherStudentEnv(Go2LidarEnv):
                 base_lin_vel,                           
                 foot_contacts,     
                 is_contact,
-                
-                      
             ],
             dim=-1,
         )
+        
+        self._previous_actions = self._actions.clone()
         
         return {
             "policy": student_obs,
