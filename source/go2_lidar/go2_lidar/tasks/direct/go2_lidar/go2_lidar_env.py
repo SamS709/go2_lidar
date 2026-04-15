@@ -131,30 +131,35 @@ class Go2LidarEnv(DirectRLEnv):
         self._robot.set_joint_position_target(self._processed_actions)
         # self._robot.set_joint_position_target(self._robot.data.default_joint_pos)    
         
-    def _compute_height_data(self):
-        # Get sensor/robot pose in world frame
-        pos_w = self._height_scanner.data.pos_w          # (N, 3)
-        quat_w = self._height_scanner.data.quat_w        # (N, 4) — w, x, y, z
+    def _compute_height_data(self, method):
+        if method == "normal":
+            return (
+                self._height_scanner.data.pos_w[:, 2].unsqueeze(1) - self._height_scanner.data.ray_hits_w[..., 2] - 0.28
+            ).clip(-1.0, 1.0) 
+        else:            
+            # Get sensor/robot pose in world frame
+            pos_w = self._height_scanner.data.pos_w          # (N, 3)
+            quat_w = self._height_scanner.data.quat_w        # (N, 4) — w, x, y, z
 
-        # Ray hit positions in world frame
-        ray_hits_w = self._height_scanner.data.ray_hits_w  # (N, H, 3)
-        N, H, _ = ray_hits_w.shape
+            # Ray hit positions in world frame
+            ray_hits_w = self._height_scanner.data.ray_hits_w  # (N, H, 3)
+            N, H, _ = ray_hits_w.shape
 
-        # Transform ray hits into the robot base frame
-        # 1. Translate: shift hits relative to sensor origin
-        hits_relative = ray_hits_w - pos_w.unsqueeze(1)   # (N, H, 3)
+            # Transform ray hits into the robot base frame
+            # 1. Translate: shift hits relative to sensor origin
+            hits_relative = ray_hits_w - pos_w.unsqueeze(1)   # (N, H, 3)
 
-        # 2. Rotate: apply inverse of robot quaternion to go from world → base frame
-        quat_inv_w = quat_inv(quat_w)                      # (N, 4)
-        quat_inv_w_expanded = quat_inv_w.unsqueeze(1).expand(N, H, 4)
-        hits_in_base = quat_apply(
-            quat_inv_w_expanded.reshape(N * H, 4),
-            hits_relative.reshape(N * H, 3)
-        ).reshape(N, H, 3)
+            # 2. Rotate: apply inverse of robot quaternion to go from world → base frame
+            quat_inv_w = quat_inv(quat_w)                      # (N, 4)
+            quat_inv_w_expanded = quat_inv_w.unsqueeze(1).expand(N, H, 4)
+            hits_in_base = quat_apply(
+                quat_inv_w_expanded.reshape(N * H, 4),
+                hits_relative.reshape(N * H, 3)
+            ).reshape(N, H, 3)
 
-        # 3. The height in the base frame is the Z component (negative = below robot)
-        height_data = -hits_in_base[..., 2] - 0.5 
-        return height_data      
+            # 3. The height in the base frame is the Z component (negative = below robot)
+            height_data = -hits_in_base[..., 2] - 0.5 
+            return height_data      
     
     def _process_heightmap(self, height_map):
         sampled_indices = torch.multinomial(self.gaussian_prob_heightmap, self.cfg.n_zeros, replacement=True)
@@ -166,7 +171,7 @@ class Go2LidarEnv(DirectRLEnv):
         height_data = None
         height_data_actor = None
         if isinstance(self.cfg, Go2LidarRoughEnvCfg):
-            height_data = self._compute_height_data()
+            height_data = self._compute_height_data("normal")
             height_data_actor = height_data + (2.0 * torch.rand_like(height_data) - 1.0) * float(0.01) * self.cfg.randomize
             
             height_data_actor = self._process_heightmap(height_data_actor) 

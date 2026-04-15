@@ -45,7 +45,23 @@ gym.register(
     disable_env_checker=True,
     kwargs={
         "env_cfg_entry_point": f"{__name__}.go2_distillation_env_cfg:Go2TeacherStudentEnvCfg",
-        "rsl_rl_cfg_entry_point": f"{agents.__name__}.rsl_rl_ppo_distillation_cfg:Go2LidarDistillationCnnPPORunnerCfg",
+        # Default to teacher pretraining on privileged observations.
+        "rsl_rl_cfg_entry_point": f"{agents.__name__}.rsl_rl_ppo_distillation_cfg:Go2LidarTeacherPretrainRunnerCfg",
+        # Use this explicit key with --agent for actual student distillation.
+        "rsl_rl_distillation_cfg_entry_point": f"{agents.__name__}.rsl_rl_ppo_distillation_cfg:Go2LidarDistillationRunnerCfg",
+    },
+)
+
+gym.register(
+    id="Isaac-Velocity-Rough-Go2-Lidar-Distillation-CNN-Direct-v0",
+    entry_point=f"{__name__}.go2_distillation_env:Go2TeacherStudentCNNEnv",
+    disable_env_checker=True,
+    kwargs={
+        "env_cfg_entry_point": f"{__name__}.go2_distillation_env_cfg:Go2TeacherStudentEnvCfg",
+        # Default to teacher pretraining on privileged observations.
+        "rsl_rl_cfg_entry_point": f"{agents.__name__}.rsl_rl_ppo_distillation_cfg:Go2LidarTeacherPretrainCNNRunnerCfg",
+        # Use this explicit key with --agent for actual student distillation.
+        "rsl_rl_distillation_cfg_entry_point": f"{agents.__name__}.rsl_rl_ppo_distillation_cfg:Go2LidarDistillationCNNRunnerCfg",
     },
 )
 

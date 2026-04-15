@@ -17,7 +17,7 @@ from isaaclab.sim import SimulationCfg
 from isaaclab.terrains import TerrainImporterCfg
 from isaaclab.utils import configclass
 
-##
+#
 # Pre-defined configs
 ##
 from isaaclab_assets.robots.unitree import UNITREE_GO2_CFG  # isort: skip
@@ -44,7 +44,7 @@ class CommandsCfg:
     base_velocity = mdp.UniformVelocityCommandCfg(
         asset_name="robot",
         resampling_time_range=(10.0, 10.0),
-        # rel_standing_envs=0.02,
+        rel_standing_envs=0.05,
         heading_command=True,
         heading_control_stiffness=0.5,
         debug_vis=False,

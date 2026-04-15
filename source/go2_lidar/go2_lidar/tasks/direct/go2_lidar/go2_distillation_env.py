@@ -34,37 +34,6 @@ class Go2TeacherStudentEnv(Go2LidarEnv):
     def __init__(self, cfg: Go2LidarRoughEnvCfg, render_mode: str | None = None, **kwargs):
         super().__init__(cfg, render_mode, **kwargs)
 
-    def _build_policy_obs(self, height_data_student: torch.Tensor) -> dict[str, torch.Tensor]:
-        """Build student observation groups for CNN policy: proprio + grid."""
-        base_ang_vel = self._robot.data.root_ang_vel_b
-        projected_gravity = self._robot.data.projected_gravity_b
-        joint_pos_rel = self._robot.data.joint_pos - self._robot.data.default_joint_pos
-        joint_vel = self._robot.data.joint_vel
-        velocity_commands = self.command_manager.get_command("base_velocity")
-
-        proprio_obs = torch.cat(
-            [
-                base_ang_vel
-                + (2.0 * torch.rand_like(self._robot.data.root_lin_vel_b) - 1.0) * float(0.1) * self.cfg.randomize,
-                projected_gravity
-                + (2.0 * torch.rand_like(self._robot.data.projected_gravity_b) - 1.0) * float(0.05) * self.cfg.randomize,
-                velocity_commands,
-                joint_pos_rel
-                + (2.0 * torch.rand_like(self._robot.data.default_joint_pos) - 1.0) * float(0.01) * self.cfg.randomize,
-                joint_vel + (2.0 * torch.rand_like(self._robot.data.joint_vel) - 1.0) * float(0.1) * self.cfg.randomize,
-                height_data_student,
-                self._actions,
-            ],
-            dim=-1,
-        )
-        proprio_obs = self._sanitize_tensor(proprio_obs, "student_proprio_obs", clamp_abs=100.0)
-
-        # Height map is 15x10 and encoded as a single channel image for CNN input.
-        grid_obs = height_data_student.view(self.num_envs, 1, 15, 10)
-        grid_obs = self._sanitize_tensor(grid_obs, "student_grid_obs", clamp_abs=10.0)
-
-        return {"proprio": proprio_obs, "grid": grid_obs}
-
     def _get_observations(self) -> dict:
         """
         Return both student and teacher observations for distillation.
@@ -77,17 +46,20 @@ class Go2TeacherStudentEnv(Go2LidarEnv):
                 - "teacher": teacher observations (privileged, 210 dims)
         """
         # height data (laser)
-        height_data = self._compute_height_data()
+        height_data = self._compute_height_data("normal")
         height_data_student = height_data + (2.0 * torch.rand_like(height_data) - 1.0) * float(0.01) * self.cfg.randomize
         height_data_student = self._process_heightmap(height_data_student) 
         height_data = self._sanitize_tensor(height_data, "height_data", clamp_abs=10.0)
-        height_data_student = self._sanitize_tensor(height_data_student, "height_data_actor", clamp_abs=10.0)
+        height_data_student = self._sanitize_tensor(height_data_student, "height_data_student", clamp_abs=10.0)
         
         base_ang_vel = self._robot.data.root_ang_vel_b
         projected_gravity = self._robot.data.projected_gravity_b
         joint_pos_rel = self._robot.data.joint_pos - self._robot.data.default_joint_pos
         joint_vel = self._robot.data.joint_vel
         velocity_commands = self.command_manager.get_command("base_velocity")
+        # torch.set_printoptions(precision=2, linewidth=1000, sci_mode=False)
+        # print(height_data.reshape(self.num_envs, 15, 10).flip(1,2))            
+            
         
         student_obs = torch.cat(
             [
@@ -105,7 +77,7 @@ class Go2TeacherStudentEnv(Go2LidarEnv):
             dim=-1,
         )
         
-                
+        base_lin_vel = self._robot.data.root_lin_vel_b 
         foot_contacts = (torch.norm(self._contact_sensor.data.net_forces_w[:, self._feet_ids], dim=-1) > 1.0).float()
         is_contact = (
             torch.max(torch.norm(self._contact_sensor.data.net_forces_w_history[:, :, self._body_contact_info_teacher], dim=-1), dim=1)[0] > 1.0
@@ -126,12 +98,100 @@ class Go2TeacherStudentEnv(Go2LidarEnv):
             ],
             dim=-1,
         )
+        teacher_obs = self._sanitize_tensor(teacher_obs, "teacher_obs", clamp_abs=100.0)
+        student_obs = self._sanitize_tensor(student_obs, "student_obs", clamp_abs=100.0)
         
         self._previous_actions = self._actions.clone()
         
         return {
             "policy": student_obs,
-            "teacher": teacher_obs,   # Teacher network sees this (210 dims)
+            "teacher": teacher_obs,
+        }
+
+class Go2TeacherStudentCNNEnv(Go2LidarEnv):
+    """
+    Go2 environment for teacher-student distillation.
+    
+    Key concepts:
+    - Teacher gets PRIVILEGED observations (full state including linear velocity)
+    - Student gets LIMITED observations (no linear velocity - must infer from other signals)
+    - Both share the same action space
+    - The distillation algorithm trains the student to mimic the teacher's policy
+    """
+    
+    cfg: Go2LidarRoughEnvCfg
+
+    def __init__(self, cfg: Go2LidarRoughEnvCfg, render_mode: str | None = None, **kwargs):
+        super().__init__(cfg, render_mode, **kwargs)
+
+    def _get_observations(self) -> dict:
+        """
+        Return both student and teacher observations for distillation.
+        """
+        # height data (laser)
+        C, H, W = 1, 15, 10
+        height_data = self._compute_height_data("normal")
+        height_data_student = height_data + (2.0 * torch.rand_like(height_data) - 1.0) * float(0.01) * self.cfg.randomize
+        height_data_student = self._process_heightmap(height_data_student) 
+        height_data = height_data.view(self.num_envs, C, H, W)
+        height_data_student = height_data_student.view(self.num_envs, C, H, W) 
+        
+        base_ang_vel = self._robot.data.root_ang_vel_b
+        projected_gravity = self._robot.data.projected_gravity_b
+        joint_pos_rel = self._robot.data.joint_pos - self._robot.data.default_joint_pos
+        joint_vel = self._robot.data.joint_vel
+        velocity_commands = self.command_manager.get_command("base_velocity")
+        # torch.set_printoptions(precision=2, linewidth=1000, sci_mode=False)
+        # print(height_data.reshape(self.num_envs, 15, 10).flip(1,2))            
+            
+        
+        proprio_student = torch.cat(
+            [
+                base_ang_vel
+                + (2.0 * torch.rand_like(self._robot.data.root_lin_vel_b) - 1.0) * float(0.1) * self.cfg.randomize,
+                projected_gravity
+                + (2.0 * torch.rand_like(self._robot.data.projected_gravity_b) - 1.0) * float(0.05) * self.cfg.randomize,
+                velocity_commands,
+                joint_pos_rel
+                + (2.0 * torch.rand_like(self._robot.data.default_joint_pos) - 1.0) * float(0.01) * self.cfg.randomize,
+                joint_vel + (2.0 * torch.rand_like(self._robot.data.joint_vel) - 1.0) * float(0.1) * self.cfg.randomize,
+                self._actions,
+            ],
+            dim=-1,
+        )
+        
+        base_lin_vel = self._robot.data.root_lin_vel_b 
+        foot_contacts = (torch.norm(self._contact_sensor.data.net_forces_w[:, self._feet_ids], dim=-1) > 1.0).float()
+        is_contact = (
+            torch.max(torch.norm(self._contact_sensor.data.net_forces_w_history[:, :, self._body_contact_info_teacher], dim=-1), dim=1)[0] > 1.0
+        )
+
+        proprio_teacher = torch.cat(
+            [
+                base_ang_vel,      
+                projected_gravity, 
+                velocity_commands,       
+                joint_pos_rel,          
+                joint_vel,          
+                self._actions, 
+                base_lin_vel,                           
+                foot_contacts,     
+                is_contact,
+            ],
+            dim=-1,
+        )
+        teacher_height_scan = self._sanitize_tensor(height_data, "height_data", clamp_abs=10.0)
+        student_height_scan = self._sanitize_tensor(height_data_student, "height_data_student", clamp_abs=10.0)
+        teacher_proprio = self._sanitize_tensor(proprio_teacher, "teacher_obs", clamp_abs=100.0)
+        student_proprio = self._sanitize_tensor(proprio_student, "proprio_student", clamp_abs=100.0)
+        
+        self._previous_actions = self._actions.clone()
+        
+        return {
+            "student_proprio": student_proprio,
+            "student_height_scan": student_height_scan,
+            "teacher_proprio": teacher_proprio,
+            "teacher_height_scan": teacher_height_scan,
         }
 
 
@@ -152,7 +212,7 @@ class Go2StudentEnv(Go2LidarEnv):
         """
         Return only student observations (same as during distillation).
         """
-        height_data = self._compute_height_data()
+        height_data = self._compute_height_data("normal")
         height_data_student = height_data + (2.0 * torch.rand_like(height_data) - 1.0) * float(0.01) * self.cfg.randomize
         height_data_student = self._process_heightmap(height_data_student) 
         height_data = self._sanitize_tensor(height_data, "height_data", clamp_abs=10.0)
@@ -164,7 +224,7 @@ class Go2StudentEnv(Go2LidarEnv):
         joint_vel = self._robot.data.joint_vel    
         velocity_commands = self.command_manager.get_command("base_velocity")
         self._previous_actions = self._actions.clone()
-        proprio_obs = torch.cat(
+        student_obs = torch.cat(
             [
                 base_ang_vel
                 + (2.0 * torch.rand_like(self._robot.data.root_lin_vel_b) - 1.0) * float(0.1) * self.cfg.randomize,
@@ -174,11 +234,11 @@ class Go2StudentEnv(Go2LidarEnv):
                 joint_pos_rel
                 + (2.0 * torch.rand_like(self._robot.data.default_joint_pos) - 1.0) * float(0.01) * self.cfg.randomize,
                 joint_vel + (2.0 * torch.rand_like(self._robot.data.joint_vel) - 1.0) * float(0.1) * self.cfg.randomize,
+                height_data_student,
                 self._actions,
             ],
             dim=-1,
         )
-        proprio_obs = self._sanitize_tensor(proprio_obs, "student_proprio_obs", clamp_abs=100.0)
-        grid_obs = self._sanitize_tensor(height_data_student.view(self.num_envs, 1, 15, 10), "student_grid_obs", clamp_abs=10.0)
+        student_obs = self._sanitize_tensor(student_obs, "student_obs", clamp_abs=100.0)
 
-        return {"policy": {"proprio": proprio_obs, "grid": grid_obs}}
+        return {"policy": student_obs}
