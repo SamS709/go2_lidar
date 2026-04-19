@@ -10,6 +10,10 @@
 python ./scripts/rsl_rl/train.py --task Isaac-Velocity-Rough-Go2-Lidar-Direct-v0 --num_envs 8192 --resume --load_run 2026-03-06_15-40-42 --headless
 
 python ./scripts/rsl_rl/train.py --task Isaac-Velocity-Rough-Go2-Lidar-Distillation-Direct-v0 --num_envs 6144 --resume --load_run 2026-04-13_15-33-10_teacher --headless
+
+
+python scripts/rsl_rl/train.py --task Isaac-Velocity-Rough-Go2-Lidar-Distillation-CNN-Direct-v0 --num_envs 6144 --resume --load_run 2026-04-15_16-23-21_teacher --headless
+
 """
 import argparse
 import sys

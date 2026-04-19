@@ -103,7 +103,9 @@ class Go2LidarEnv(DirectRLEnv):
         self.scene.sensors["contact_sensor"] = self._contact_sensor
         if isinstance(self.cfg, Go2LidarRoughEnvCfg):
             # we add a height scanner for perceptive locomotion
-            self._height_scanner = RayCaster(self.cfg.height_scanner)
+            # Previous initialization path kept for reference:
+            # self._height_scanner = RayCaster(self.cfg.height_scanner)
+            self._height_scanner = self.cfg.height_scanner.class_type(self.cfg.height_scanner)
             # self._height_scanner_critic = RayCaster(self.cfg.height_scanner_critic)
             self.scene.sensors["height_scanner"] = self._height_scanner
             # self.scene.sensors["height_scanner_critic"] = self._height_scanner_critic
@@ -160,6 +162,59 @@ class Go2LidarEnv(DirectRLEnv):
             # 3. The height in the base frame is the Z component (negative = below robot)
             height_data = -hits_in_base[..., 2] - 0.5 
             return height_data      
+
+    def _compute_height_data_from_cloud(self):
+        """Compute flattened heightmap in lidar frame using cfg x/y bounds and cell size."""
+        data = self._height_scanner.data
+        ray_hits_w = data.ray_hits_w
+        lidar_pos_w = data.pos_w
+        lidar_quat_w = data.quat_w
+
+        num_envs, num_rays, _ = ray_hits_w.shape
+        rays_rel_w = ray_hits_w - lidar_pos_w.unsqueeze(1)
+        rays_lidar = quat_apply(
+            quat_conjugate(lidar_quat_w).unsqueeze(1).expand(num_envs, num_rays, 4).reshape(-1, 4),
+            rays_rel_w.reshape(-1, 3),
+        ).reshape(num_envs, num_rays, 3)
+
+        cell_size_m = float(self.cfg.res)
+        inv_cell_size = 1.0 / cell_size_m
+        x_min, x_max = float(self.cfg.x_range[0]), float(self.cfg.x_range[1])
+        y_min, y_max = float(self.cfg.y_range[0]), float(self.cfg.y_range[1])
+        x_cells = max(1, int((x_max - x_min) / cell_size_m))
+        y_cells = max(1, int((y_max - y_min) / cell_size_m))
+        num_cells = x_cells * y_cells
+
+        rays_flat = rays_lidar.reshape(-1, 3)
+        env_ids = torch.arange(num_envs, device=self.device).unsqueeze(1).expand(num_envs, num_rays).reshape(-1)
+
+        valid = torch.isfinite(rays_flat).all(dim=1)
+        if not torch.any(valid):
+            return torch.zeros((num_envs, num_cells), device=self.device)
+
+        rays_valid = rays_flat[valid]
+        env_ids = env_ids[valid]
+
+        x_idx = torch.floor((rays_valid[:, 0] - x_min) * inv_cell_size).long()
+        y_idx = torch.floor((rays_valid[:, 1] - y_min) * inv_cell_size).long()
+        in_bounds = (x_idx >= 0) & (x_idx < x_cells) & (y_idx >= 0) & (y_idx < y_cells)
+        if not torch.any(in_bounds):
+            return torch.zeros((num_envs, num_cells), device=self.device)
+
+        x_idx = x_idx[in_bounds]
+        y_idx = y_idx[in_bounds]
+        env_ids = env_ids[in_bounds]
+        z_vals = rays_valid[in_bounds, 2]
+
+        # Flatten env and cell indexing into one reduce op.
+        flat_idx = env_ids * num_cells + x_idx * y_cells + y_idx
+        height_map = torch.full((num_envs * num_cells,), -torch.inf, device=self.device)
+        height_map.scatter_reduce_(0, flat_idx, z_vals, reduce="amax", include_self=True)
+        height_map = torch.where(torch.isfinite(height_map), -height_map, torch.zeros_like(height_map))
+        height_map = height_map.reshape(num_envs, num_cells)
+
+        # Keep ordering consistent with lidar_debug flow.
+        return height_map.flip(dims=[1])
     
     def _process_heightmap(self, height_map):
         sampled_indices = torch.multinomial(self.gaussian_prob_heightmap, self.cfg.n_zeros, replacement=True)
@@ -171,7 +226,9 @@ class Go2LidarEnv(DirectRLEnv):
         height_data = None
         height_data_actor = None
         if isinstance(self.cfg, Go2LidarRoughEnvCfg):
-            height_data = self._compute_height_data("normal")
+            # Previous height logic kept for reference:
+            # height_data = self._compute_height_data("normal")
+            height_data = self._compute_height_data_from_cloud()
             height_data_actor = height_data + (2.0 * torch.rand_like(height_data) - 1.0) * float(0.01) * self.cfg.randomize
             
             height_data_actor = self._process_heightmap(height_data_actor) 

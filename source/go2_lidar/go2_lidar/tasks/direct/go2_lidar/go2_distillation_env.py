@@ -46,18 +46,28 @@ class Go2TeacherStudentEnv(Go2LidarEnv):
                 - "teacher": teacher observations (privileged, 210 dims)
         """
         # height data (laser)
-        height_data = self._compute_height_data("normal")
+        # Previous height logic kept for reference:
+        # height_data = self._compute_height_data("normal")
+        height_data = self._compute_height_data_from_cloud()
         height_data_student = height_data + (2.0 * torch.rand_like(height_data) - 1.0) * float(0.01) * self.cfg.randomize
         height_data_student = self._process_heightmap(height_data_student) 
         height_data = self._sanitize_tensor(height_data, "height_data", clamp_abs=10.0)
         height_data_student = self._sanitize_tensor(height_data_student, "height_data_student", clamp_abs=10.0)
+        
+        
         
         base_ang_vel = self._robot.data.root_ang_vel_b
         projected_gravity = self._robot.data.projected_gravity_b
         joint_pos_rel = self._robot.data.joint_pos - self._robot.data.default_joint_pos
         joint_vel = self._robot.data.joint_vel
         velocity_commands = self.command_manager.get_command("base_velocity")
-        # torch.set_printoptions(precision=2, linewidth=1000, sci_mode=False)
+        torch.set_printoptions(precision=2, linewidth=1000, sci_mode=False)
+        cell_size_m = float(self.cfg.res)
+        inv_cell_size = 1.0 / cell_size_m
+        x_min, x_max = float(self.cfg.x_range[0]), float(self.cfg.x_range[1])
+        y_min, y_max = float(self.cfg.y_range[0]), float(self.cfg.y_range[1])
+        print(height_data.reshape(int((x_max - x_min)*inv_cell_size),int((y_max - y_min)*inv_cell_size)))
+        
         # print(height_data.reshape(self.num_envs, 15, 10).flip(1,2))            
             
         
@@ -130,7 +140,9 @@ class Go2TeacherStudentCNNEnv(Go2LidarEnv):
         """
         # height data (laser)
         C, H, W = 1, 15, 10
-        height_data = self._compute_height_data("normal")
+        # Previous height logic kept for reference:
+        # height_data = self._compute_height_data("normal")
+        height_data = self._compute_height_data_from_cloud() - 0.5
         height_data_student = height_data + (2.0 * torch.rand_like(height_data) - 1.0) * float(0.01) * self.cfg.randomize
         height_data_student = self._process_heightmap(height_data_student) 
         height_data = height_data.view(self.num_envs, C, H, W)
@@ -142,6 +154,12 @@ class Go2TeacherStudentCNNEnv(Go2LidarEnv):
         joint_vel = self._robot.data.joint_vel
         velocity_commands = self.command_manager.get_command("base_velocity")
         # torch.set_printoptions(precision=2, linewidth=1000, sci_mode=False)
+        # cell_size_m = float(self.cfg.res)
+        # inv_cell_size = 1.0 / cell_size_m
+        # x_min, x_max = float(self.cfg.x_range[0]), float(self.cfg.x_range[1])
+        # y_min, y_max = float(self.cfg.y_range[0]), float(self.cfg.y_range[1])
+        # print(height_data_student.reshape(int((x_max - x_min)*inv_cell_size),int((y_max - y_min)*inv_cell_size)))
+        
         # print(height_data.reshape(self.num_envs, 15, 10).flip(1,2))            
             
         
@@ -212,7 +230,9 @@ class Go2StudentEnv(Go2LidarEnv):
         """
         Return only student observations (same as during distillation).
         """
-        height_data = self._compute_height_data("normal")
+        # Previous height logic kept for reference:
+        # height_data = self._compute_height_data("normal")
+        height_data = self._compute_height_data_from_cloud()
         height_data_student = height_data + (2.0 * torch.rand_like(height_data) - 1.0) * float(0.01) * self.cfg.randomize
         height_data_student = self._process_heightmap(height_data_student) 
         height_data = self._sanitize_tensor(height_data, "height_data", clamp_abs=10.0)

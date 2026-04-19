@@ -12,7 +12,7 @@ from isaaclab.managers import EventTermCfg as EventTerm
 from isaaclab.managers import SceneEntityCfg
 from isaaclab.managers import CurriculumManager, CurriculumTermCfg
 from isaaclab.scene import InteractiveSceneCfg
-from isaaclab.sensors import ContactSensorCfg, RayCasterCfg, patterns
+from isaaclab.sensors import ContactSensorCfg, MultiMeshRayCasterCfg, RayCasterCfg, patterns
 from isaaclab.sim import SimulationCfg
 from isaaclab.terrains import TerrainImporterCfg
 from isaaclab.utils import configclass
@@ -272,29 +272,52 @@ class Go2LidarRoughEnvCfg(Go2LidarFlatEnvCfg):
         debug_vis=False,
     )
     #  # Heightmap configuration
-    # height_map_dist = 1.0
-    # res = 6  # resolution of the heightmap (cells per meter)
+    height_map_dist = 1.0
+    # New grid-based heightmap config (values are in lidar frame).
+    # NOTE: `res` is used as cell size in meters.
+    res = 0.1
+    x_range = [-0.5, 1.0]
+    y_range = [-0.5, 0.5]
     # height_map_cells = int(2 * height_map_dist * res) ** 2  
     # observation_space = 53 + height_map_cells  
     
     # lidar_range = height_map_dist * 3.0 # * 1.4142135623730951  # sqrt(2)
     lidar_offset = (0.28945, 0.0, -0.04682)
+    lidar_rotation = (0.13131596830945724, 0.0, 0.9913405653290647, 0.0)
 
-    # height_scanner = RayCasterCfg(
+    # New scanner path: multi-mesh ray-caster over /World.
+    # height_scanner = MultiMeshRayCasterCfg(
     #     prim_path="/World/envs/env_.*/Robot/base",
     #     update_period=1 / 60,
-    #     offset=RayCasterCfg.OffsetCfg(
+    #     offset=MultiMeshRayCasterCfg.OffsetCfg(
     #         pos=lidar_offset,
     #         rot=lidar_rotation,
     #     ),
-    #     mesh_prim_paths=["/World/ground"],
+    #     mesh_prim_paths=["/World"],
     #     ray_alignment="base",
     #     pattern_cfg=patterns.LidarPatternCfg(
-    #         channels=128, vertical_fov_range=[-90.0, 90.0], horizontal_fov_range=[-180, 180], horizontal_res=2.0
+    #         channels=64, vertical_fov_range=[-0.0, 90.0], horizontal_fov_range=[-180, 180], horizontal_res=2.0
     #     ),
-    #     max_distance=lidar_range,
+    #     max_distance=4.0,
     #     debug_vis=False,
-    # ) height_scanner = RayCasterCfg(
+    # )
+    height_scanner = RayCasterCfg(
+        prim_path="/World/envs/env_.*/Robot/base",
+        update_period=1 / 60,
+        offset=RayCasterCfg.OffsetCfg(
+            pos=lidar_offset,
+            rot=lidar_rotation,
+        ),
+        mesh_prim_paths=["/World"],
+        ray_alignment="base",
+        pattern_cfg=patterns.LidarPatternCfg(
+            channels=64, vertical_fov_range=[0.0, 90.0], horizontal_fov_range=[-180, 180], horizontal_res=2.0
+        ),
+        max_distance=4.0,
+        debug_vis=False,
+    )
+   
+    # height_scanner = RayCasterCfg(
     #     prim_path="/World/envs/env_.*/Robot/base",
     #     update_period=1 / 60,
     #     offset=RayCasterCfg.OffsetCfg(
@@ -316,15 +339,16 @@ class Go2LidarRoughEnvCfg(Go2LidarFlatEnvCfg):
     n_zeros = 30
     # the heightmap is 1.5 * 1, offseted by lidar offset + 0.25 on x such that it detects 1 metter in front of and 0.5 meters behind the lidar frame
     # on the real robot, from the lidar frame: grid 0.5 meters left and right and 1 meter front and 0.5 meters behind
-    height_scanner = RayCasterCfg(
-        update_period=1 / 20,
-        prim_path="/World/envs/env_.*/Robot/base",
-        offset=RayCasterCfg.OffsetCfg(pos=(0.28945 + 0.25, 0.0, 0.5)),
-        # ray_alignment="base",
-        pattern_cfg=patterns.GridPatternCfg(resolution=0.1, size=[1.4, 0.9], ordering = "yx"),
-        debug_vis=False,
-        mesh_prim_paths=["/World/ground"],
-    )
+    # Previous scanner path kept for reference (disabled):
+    # height_scanner = RayCasterCfg(
+    #     update_period=1 / 20,
+    #     prim_path="/World/envs/env_.*/Robot/base",
+    #     offset=RayCasterCfg.OffsetCfg(pos=(0.28945 + 0.25, 0.0, 0.5)),
+    #     # ray_alignment="base",
+    #     pattern_cfg=patterns.GridPatternCfg(resolution=0.1, size=[1.4, 0.9], ordering="yx"),
+    #     debug_vis=False,
+    #     mesh_prim_paths=["/World/ground"],
+    # )
    
 
     

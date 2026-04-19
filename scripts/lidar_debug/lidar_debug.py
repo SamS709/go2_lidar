@@ -45,10 +45,11 @@ torch.set_printoptions(precision=2, linewidth=200, sci_mode=False)
 import isaaclab.sim as sim_utils
 from isaaclab.assets import AssetBaseCfg
 from isaaclab.scene import InteractiveScene, InteractiveSceneCfg
-from isaaclab.sensors.ray_caster import RayCasterCfg, patterns
+from isaaclab.sensors.ray_caster import MultiMeshRayCasterCfg, patterns
 from isaaclab.terrains import TerrainImporterCfg
 from isaaclab.utils import configclass
-from isaaclab.utils.math import quat_from_euler_xyz
+from isaaclab.utils.math import quat_from_euler_xyz, quat_apply, quat_conjugate
+
 from isaaclab.terrains.config.rough import ROUGH_TERRAINS_CFG  # isort:skip
 import isaaclab.terrains as terrain_gen
 from isaaclab.utils.math import subtract_frame_transforms, quat_inv, quat_apply
@@ -63,6 +64,11 @@ from isaaclab_assets.robots.unitree import UNITREE_GO2_CFG
 
 MAX_RAY_DIST = 1.0 # the rays make a circle of radius = sqrt(2) * MAX_RAY_DIST, so that the height map is fully 
 OFFSET = (0.28945, 0.0, -0.04682) # offset for the lidar from the base
+ROOM_CENTER_X = 0.0
+ROOM_CENTER_Y = 4.0
+ROOM_INNER_SIZE = 10.0
+ROOM_WALL_THICKNESS = 0.1
+ROOM_WALL_HEIGHT = 5.0
 W, X, Y, Z = quat_from_euler_xyz(torch.tensor(-torch.pi), torch.tensor(torch.pi - 2.8782), torch.tensor(-torch.pi))
 @configclass
 class RaycasterSensorSceneCfg(InteractiveSceneCfg):
@@ -75,23 +81,27 @@ class RaycasterSensorSceneCfg(InteractiveSceneCfg):
         prim_path="/World/ground",
         terrain_type="generator",
         terrain_generator=TerrainGeneratorCfg(
-    size=(8.0, 8.0),
-    border_width=20.0,
-    num_rows=1,
-    num_cols=2,
-    horizontal_scale=0.1,
-    vertical_scale=0.005,
-    slope_threshold=0.75,
-    use_cache=False,
-    sub_terrains={
-        "pyramid_stairs": terrain_gen.MeshPyramidStairsTerrainCfg(
-            proportion=1.0,
-            step_height_range=(0.05, 0.15),
-            step_width=0.3,
-            platform_width=2.0,
-            border_width=1.0,
-            holes=False,
-        ),
+            size=(8.0, 8.0),
+            border_width=20.0,
+            num_rows=1,
+            num_cols=2,
+            curriculum=True,
+            horizontal_scale=0.1,
+            vertical_scale=0.005,
+            slope_threshold=0.75,
+            use_cache=False,
+            sub_terrains={
+                "pyramid_stairs": terrain_gen.MeshPyramidStairsTerrainCfg(
+                    proportion=0.5,
+                    step_height_range=(0.05, 0.15),
+                    step_width=0.3,
+                    platform_width=2.0,
+                    border_width=1.0,
+                    holes=False,
+                ),
+                "room_floor": terrain_gen.MeshPlaneTerrainCfg(
+                    proportion=0.5,
+                ),
         # "pyramid_stairs_inv": terrain_gen.MeshInvertedPyramidStairsTerrainCfg(
         #     proportion=0.2,
         #     step_height_range=(0.05, 0.23),
@@ -109,8 +119,8 @@ class RaycasterSensorSceneCfg(InteractiveSceneCfg):
         # "hf_pyramid_slope_inv": terrain_gen.HfInvertedPyramidSlopedTerrainCfg(
         #     proportion=0.1, slope_range=(0.0, 0.4), platform_width=2.0, border_width=0.25
         # ),
-    },
-),
+            },
+        ),
         max_init_terrain_level=5,
         collision_group=-1,
         physics_material=sim_utils.RigidBodyMaterialCfg(
@@ -127,6 +137,68 @@ class RaycasterSensorSceneCfg(InteractiveSceneCfg):
         prim_path="/World/Light", spawn=sim_utils.DomeLightCfg(intensity=3000.0, color=(0.75, 0.75, 0.75))
     )
 
+    # four static walls for a simple room next to the pyramid tile
+    room_wall_north = AssetBaseCfg(
+        prim_path="/World/room/wall_north",
+        init_state=AssetBaseCfg.InitialStateCfg(
+            pos=(
+                ROOM_CENTER_X,
+                ROOM_CENTER_Y + ROOM_INNER_SIZE / 2.0 + ROOM_WALL_THICKNESS / 2.0,
+                ROOM_WALL_HEIGHT / 2.0,
+            )
+        ),
+        spawn=sim_utils.CuboidCfg(
+            size=(ROOM_INNER_SIZE + 2.0 * ROOM_WALL_THICKNESS, ROOM_WALL_THICKNESS, ROOM_WALL_HEIGHT),
+            rigid_props=sim_utils.RigidBodyPropertiesCfg(kinematic_enabled=True),
+            collision_props=sim_utils.CollisionPropertiesCfg(collision_enabled=True),
+        ),
+    )
+    room_wall_south = AssetBaseCfg(
+        prim_path="/World/room/wall_south",
+        init_state=AssetBaseCfg.InitialStateCfg(
+            pos=(
+                ROOM_CENTER_X,
+                ROOM_CENTER_Y - ROOM_INNER_SIZE / 2.0 - ROOM_WALL_THICKNESS / 2.0,
+                ROOM_WALL_HEIGHT / 2.0,
+            )
+        ),
+        spawn=sim_utils.CuboidCfg(
+            size=(ROOM_INNER_SIZE + 2.0 * ROOM_WALL_THICKNESS, ROOM_WALL_THICKNESS, ROOM_WALL_HEIGHT),
+            rigid_props=sim_utils.RigidBodyPropertiesCfg(kinematic_enabled=True),
+            collision_props=sim_utils.CollisionPropertiesCfg(collision_enabled=True),
+        ),
+    )
+    room_wall_east = AssetBaseCfg(
+        prim_path="/World/room/wall_east",
+        init_state=AssetBaseCfg.InitialStateCfg(
+            pos=(
+                ROOM_CENTER_X + ROOM_INNER_SIZE / 2.0 + ROOM_WALL_THICKNESS / 2.0,
+                ROOM_CENTER_Y,
+                ROOM_WALL_HEIGHT / 2.0,
+            )
+        ),
+        spawn=sim_utils.CuboidCfg(
+            size=(ROOM_WALL_THICKNESS, ROOM_INNER_SIZE, ROOM_WALL_HEIGHT),
+            rigid_props=sim_utils.RigidBodyPropertiesCfg(kinematic_enabled=True),
+            collision_props=sim_utils.CollisionPropertiesCfg(collision_enabled=True),
+        ),
+    )
+    room_wall_west = AssetBaseCfg(
+        prim_path="/World/room/wall_west",
+        init_state=AssetBaseCfg.InitialStateCfg(
+            pos=(
+                ROOM_CENTER_X - ROOM_INNER_SIZE / 2.0 - ROOM_WALL_THICKNESS / 2.0,
+                ROOM_CENTER_Y,
+                ROOM_WALL_HEIGHT / 2.0,
+            )
+        ),
+        spawn=sim_utils.CuboidCfg(
+            size=(ROOM_WALL_THICKNESS, ROOM_INNER_SIZE, ROOM_WALL_HEIGHT),
+            rigid_props=sim_utils.RigidBodyPropertiesCfg(kinematic_enabled=True),
+            collision_props=sim_utils.CollisionPropertiesCfg(collision_enabled=True),
+        ),
+    )
+
     # robot
     robot = UNITREE_GO2_CFG.replace(prim_path="{ENV_REGEX_NS}/Robot")
 
@@ -137,32 +209,34 @@ class RaycasterSensorSceneCfg(InteractiveSceneCfg):
     rotated by approx. (rpy) [-180, 15.1, -180]. (15.1 degrees along yaw !!!) 
     The values have been chosen debugging the vis 
     '''
-    ray_caster = RayCasterCfg(
-        prim_path="/World/envs/env_.*/Robot/base",
-        # offset=RayCasterCfg.OffsetCfg(pos=(0.28945 + 0.25, 0.0, -0.04682)),
-            offset=RayCasterCfg.OffsetCfg(pos=(0.28945 + 0.25, 0.0, 0.5)),
-        update_period=1/20,
-        ray_alignment="base",
-        attach_yaw_only=False,
-        pattern_cfg=patterns.GridPatternCfg(resolution=0.1, size=[1.4, 0.9], ordering = "yx"),
-        debug_vis=True,
-        mesh_prim_paths=["/World/ground"],
-    )
     # ray_caster = RayCasterCfg(
-    #     prim_path="{ENV_REGEX_NS}/Robot/base",
-    #     update_period=1 / 60,
-    #     offset=RayCasterCfg.OffsetCfg(
-    #         pos=OFFSET,
-    #         rot=(W, X, Y, Z),  
-    #     ),
-    #     mesh_prim_paths=["/World"],
+    #     prim_path="/World/envs/env_.*/Robot/base",
+    #     # offset=RayCasterCfg.OffsetCfg(pos=(0.28945 + 0.25, 0.0, -0.04682)),
+    #         offset=RayCasterCfg.OffsetCfg(pos=(0.28945 + 0.25, 0.0, 0.5)),
+    #     update_period=1/20,
     #     ray_alignment="base",
-    #     pattern_cfg=patterns.LidarPatternCfg(
-    #         channels=128, vertical_fov_range=[-90.0, 90.0], horizontal_fov_range=[-180, 180], horizontal_res=1.0
-    #     ),
-    #     max_distance= MAX_RAY_DIST * 2.0 ,
-    #     debug_vis=not args_cli.headless,
+    #     attach_yaw_only=False,
+    #     pattern_cfg=patterns.GridPatternCfg(resolution=0.1, size=[1.4, 0.9], ordering = "yx"),
+    #     debug_vis=True,
+    #     mesh_prim_paths=["/World/ground"],
     # )
+    ray_caster = MultiMeshRayCasterCfg(
+        prim_path="{ENV_REGEX_NS}/Robot/base",
+        update_period=1 / 60,
+        offset=MultiMeshRayCasterCfg.OffsetCfg(
+            pos=OFFSET,
+            rot=(W, X, Y, Z),  
+        ),
+        # Keep a single target rooted at /World; MultiMeshRayCaster will include all
+        # supported meshes/shapes below it (including the room wall cubes).
+        mesh_prim_paths=["/World"],
+        ray_alignment="base",
+        pattern_cfg=patterns.LidarPatternCfg(
+            channels=64, vertical_fov_range=[-0.0, 90.0], horizontal_fov_range=[-180, 180], horizontal_res=2.0
+        ),
+        max_distance= 4.0  ,
+        debug_vis=not args_cli.headless,
+    )
 
 
 # Precompute Gaussian probability grid (since h=15, w=10 are fixed)
@@ -324,6 +398,48 @@ def make_robot_pitch_left_and_right(
     return joint_targets
 
 
+def create_grid_from_cloud(scene):
+    # Fast path: world -> lidar frame, bin to a flat heightmap (1D tensor).
+    data = scene["ray_caster"].data
+    ray_hits_w = data.ray_hits_w  # (num_envs, num_rays, 3)
+    lidar_pos_w = data.pos_w      # (num_envs, 3)
+    lidar_quat_w = data.quat_w    # (num_envs, 4)
+
+    rays_rel_w = ray_hits_w - lidar_pos_w.unsqueeze(1)
+    num_envs, num_rays, _ = rays_rel_w.shape
+    rays_lidar = quat_apply(
+        quat_conjugate(lidar_quat_w).unsqueeze(1).expand(num_envs, num_rays, 4).reshape(-1, 4),
+        rays_rel_w.reshape(-1, 3),
+    )
+
+    cell_size_m = 0.1
+    inv_cell_size = 1.0 / cell_size_m
+    x_min, x_max = -MAX_RAY_DIST / 2.0, MAX_RAY_DIST
+    y_min, y_max = -MAX_RAY_DIST / 2.0, MAX_RAY_DIST / 2.0
+    x_cells = max(1, int(np.ceil((x_max - x_min) * inv_cell_size)))
+    y_cells = max(1, int(np.ceil((y_max - y_min) * inv_cell_size)))
+    num_cells = x_cells * y_cells
+
+    valid = torch.isfinite(rays_lidar).all(dim=1)
+    if not torch.any(valid):
+        return torch.zeros(num_cells, device=ray_hits_w.device)
+
+    pts = rays_lidar[valid]
+    x_idx = torch.floor((pts[:, 0] - x_min) * inv_cell_size).long()
+    y_idx = torch.floor((pts[:, 1] - y_min) * inv_cell_size).long()
+    in_bounds = (x_idx >= 0) & (x_idx < x_cells) & (y_idx >= 0) & (y_idx < y_cells)
+    if not torch.any(in_bounds):
+        return torch.zeros(num_cells, device=ray_hits_w.device)
+
+    flat_idx = x_idx[in_bounds] * y_cells + y_idx[in_bounds]
+    z_vals = pts[in_bounds, 2]
+
+    # Use -inf sentinel so empty cells can be zeroed with a single where.
+    height_map_flat = torch.full((num_cells,), -torch.inf, device=ray_hits_w.device)
+    height_map_flat.scatter_reduce_(0, flat_idx, z_vals, reduce="amax", include_self=True)
+    height_map_flat = torch.where(torch.isfinite(height_map_flat), -height_map_flat, torch.zeros_like(height_map_flat))
+    return height_map_flat.flip(0)
+
 def run_simulator(sim: sim_utils.SimulationContext, scene: InteractiveScene):
     """Run the simulator."""
     # Define simulation stepping
@@ -348,8 +464,12 @@ def run_simulator(sim: sim_utils.SimulationContext, scene: InteractiveScene):
             root_state[:, :3] += scene.env_origins
             
             # root_state[:, 0] -= 5.8
-            root_state[:, 0] -= 3.8
-            root_state[:, 1] -= 3.0
+            
+            # root_state[:, 0] -= 3.8
+            # root_state[:, 1] -= 3.0
+            
+            root_state[:, 0] -= ROOM_INNER_SIZE/2.0 +0.8
+            root_state[:, 1] += 2.0*ROOM_CENTER_Y
             
             scene["robot"].write_root_pose_to_sim(root_state[:, :7])
             scene["robot"].write_root_velocity_to_sim(root_state[:, 7:])
@@ -399,100 +519,38 @@ def run_simulator(sim: sim_utils.SimulationContext, scene: InteractiveScene):
         print("-------------------------------")
         print("Robot base height (z):", scene["robot"].data.root_pos_w[:, 2])
         # print(scene["ray_caster"])
-        n_rows_deleted = 5
-        height_data = compute_height_data2(scene)
+        height_data = create_grid_from_cloud(scene)
+        cell_size_m = 0.1
+        x_cells = max(1, int(np.ceil(((MAX_RAY_DIST) - (-MAX_RAY_DIST / 2.0)) / cell_size_m)))
+        y_cells = max(1, int(np.ceil(((MAX_RAY_DIST / 2.0) - (-MAX_RAY_DIST / 2.0)) / cell_size_m)))
+        height_data_2d = height_data.reshape(x_cells, y_cells)
+        print(height_data_2d)
         # height_data = (
         #         scene["ray_caster"].data.pos_w[:, 2].unsqueeze(1) - scene["ray_caster"].data.ray_hits_w[..., 2] - 0.28
         #     )
         
 
         # sample_gaussian_and_zero_heightmap(heightmap=height_data, sigma=4.0, N=30)
-        height_data = height_data.reshape(args_cli.num_envs, 15, 10).flip(1,2)
+        # height_data = height_data.reshape(args_cli.num_envs, 15, 10).flip(1,2)
         # height_data_half =  
         # height_data2 = (
         #         scene["ray_caster"].data.pos_w[:, 2].unsqueeze(1) - scene["ray_caster"].data.ray_hits_w[..., 2] - 0.28
         #     )[:, 10*n_rows_deleted:].reshape(args_cli.num_envs, 15, 1*10).flip(1,2)
         # print(height_data-height_data2)
-        x_data = (
-                scene["ray_caster"].data.pos_w[:, 0].unsqueeze(1) - scene["ray_caster"].data.ray_hits_w[..., 0] 
-            ).reshape(args_cli.num_envs, 15, 10).flip(1,2)# .clip(-1.0, 1.0)  
+        # x_data = (
+                # scene["ray_caster"].data.pos_w[:, 0].unsqueeze(1) - scene["ray_caster"].data.ray_hits_w[..., 0] 
+            # ).reshape(args_cli.num_envs, 15, 10).flip(1,2)# .clip(-1.0, 1.0)  
         # x_data_half = x_data[:, ::2, ::2] 
-        y_data = (
-                scene["ray_caster"].data.pos_w[:, 1].unsqueeze(1) - scene["ray_caster"].data.ray_hits_w[..., 1] 
-            )#.reshape(args_cli.num_envs, 15, 10).flip(1,2)# .clip(-1.0, 1.0)  
+        # y_data = (
+                # scene["ray_caster"].data.pos_w[:, 1].unsqueeze(1) - scene["ray_caster"].data.ray_hits_w[..., 1] 
+            # )#.reshape(args_cli.num_envs, 15, 10).flip(1,2)# .clip(-1.0, 1.0)  
         # y_data_half = y_data[:, ::2, ::2] 
-        print(height_data)
+        # print(height_data)
         print("base height:", scene["robot"].data.root_pos_w[:, 2])
         # print(torch.sum(height_data == 0.0))
         # rays[torch.isinf(rays)] = 0
         
-        # # Transform rays from world frame to robot frame with offset correction
-        # from isaaclab.utils.math import quat_apply, quat_conjugate
-        # # First add offset in world frame (base to lidar transform)
-        # offset_robot_frame = torch.tensor(OFFSET, device=rays.device).unsqueeze(0).repeat(rays.shape[0], 1)  # [num_envs, 3]
-        # offset_world_frame = quat_apply(scene["robot"].data.root_quat_w, offset_robot_frame)  # [num_envs, 3]
-        # rays += offset_world_frame.unsqueeze(1)
-        # # Then rotate from world to robot frame
-        # rays = quat_apply(quat_conjugate(scene["robot"].data.root_quat_w), rays) 
-        # print("Ray cast hit results: ", rays.shape)
-        # print((rays[:,:,0]))
-        # finite_x = rays[:,:,0][torch.isfinite(rays[:,:,0])]
-        # finite_y = rays[:,:,1][torch.isfinite(rays[:,:,1])]
-        # print("max x: ", torch.max(finite_x) if finite_x.numel() > 0 else "No finite values")
-        # print("min x: ", torch.min(finite_x) if finite_x.numel() > 0 else "No finite values")
-        # # print("mean y: ",torch.mean(rays[:,:,1]))        
-        # print("max y: ", torch.max(finite_y) if finite_y.numel() > 0 else "No finite values")
-        # print("min y: ", torch.min(finite_y) if finite_y.numel() > 0 else "No finite values")
         
-        # # Create height map from raycaster data
-        # res = 6  # resolution (cells per meter)
-        # x_range = (-MAX_RAY_DIST, MAX_RAY_DIST)
-        # y_range = (-MAX_RAY_DIST/ 2.0, MAX_RAY_DIST / 2.0)
-        
-        # # Create grid dimensions
-        # x_cells = int((x_range[1] - x_range[0]) * res)
-        # y_cells = int((y_range[1] - y_range[0]) * res)
-        
-        # # Initialize height map with very high values for min operation
-        # height_map = torch.full((x_cells, y_cells), float('inf'), device=rays.device)
-        
-        # # Flatten rays for easier processing: [num_envs * num_rays, 3]
-        # rays_flat = rays.reshape(-1, 3)
-        
-        # # Filter out invalid rays (inf values)
-        # valid_mask = torch.isfinite(rays_flat).all(dim=1)
-        # rays_valid = rays_flat[valid_mask]
-        
-        # # Convert x, y positions to grid indices
-        # x_idx = ((rays_valid[:, 0] - x_range[0]) * res).long()
-        # y_idx = ((rays_valid[:, 1] - y_range[0]) * res).long()
-        # z_vals = rays_valid[:, 2]
-        
-        # # Filter indices that are within bounds
-        # valid_idx_mask = (x_idx >= 0) & (x_idx < x_cells) & (y_idx >= 0) & (y_idx < y_cells)
-        # x_idx = x_idx[valid_idx_mask]
-        # y_idx = y_idx[valid_idx_mask]
-        # z_vals = z_vals[valid_idx_mask]
-        
-        # # Use scatter_reduce to get min z for each grid cell
-        # # Flatten 2D indices to 1D
-        # flat_indices = x_idx * y_cells + y_idx
-        # height_map_flat = height_map.flatten()
-        
-        # # Get min z for each unique grid cell
-        # height_map_flat = height_map_flat.scatter_reduce(
-        #     0, flat_indices, z_vals, reduce='amax', include_self=False
-        # )
-        # height_map = height_map_flat.reshape(x_cells, y_cells)
-        
-        # # Replace inf with 0 or any default value for empty cells
-        # height_map[height_map == float('inf')] = 0.0
-        # height_map[height_map < 0.0] = 0.0
-        # height_map[height_map.shape[0]//2-height_map.shape[0]//4:height_map.shape[0]//2+height_map.shape[0]//4, height_map.shape[1]//2-height_map.shape[1]//8:height_map.shape[1]//2+height_map.shape[1]//8] = 0.0
-        
-        # print(f"Height map shape: {height_map.shape}")
-        # print(f"Height map min: {height_map.min()}, max: {height_map.max()}")
-        # print(height_map)
         
         # if not triggered:
         #     if countdown > 0:
