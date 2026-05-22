@@ -5,7 +5,13 @@
 
 from isaaclab.utils import configclass
 
-from isaaclab_rl.rsl_rl import RslRlOnPolicyRunnerCfg, RslRlPpoActorCriticRecurrentCfg, RslRlPpoActorCriticCfg, RslRlPpoAlgorithmCfg
+from isaaclab_rl.rsl_rl import (
+    RslRlCNNModelCfg,
+    RslRlOnPolicyRunnerCfg,
+    RslRlPpoActorCriticRecurrentCfg,
+    RslRlPpoActorCriticCfg,
+    RslRlPpoAlgorithmCfg,
+)
 
 
 @configclass
@@ -14,14 +20,41 @@ class Go2LidarFlatPPORunnerCfg(RslRlOnPolicyRunnerCfg):
     max_iterations = 500
     save_interval = 50
     experiment_name = "go2_lidar"
-    policy = RslRlPpoActorCriticCfg(
-        init_noise_std=1.0,
-        noise_std_type="log",
-        actor_obs_normalization=True,
-        critic_obs_normalization=True,
-        actor_hidden_dims=[128, 128, 128],
-        critic_hidden_dims=[128, 128, 128],
+    # Route observations as 1D proprio + 2D grid for both actor and critic.
+    obs_groups = {
+        "actor": ["actor_proprio", "actor_grid"],
+        "critic": ["critic_proprio", "critic_grid"],
+    }
+
+    # Use distinct CNN-based actor and critic models that fuse proprio + grid.
+    actor = RslRlCNNModelCfg(
+        hidden_dims=[128, 128, 128],
         activation="elu",
+        obs_normalization=True,
+        cnn_cfg=RslRlCNNModelCfg.CNNCfg(
+            output_channels=[16, 32],
+            kernel_size=[3, 3],
+            stride=[2, 2],
+            activation="relu",
+            max_pool=False,
+            global_pool="avg",
+        ),
+        distribution_cfg=RslRlCNNModelCfg.GaussianDistributionCfg(init_std=0.8, std_type="log"),
+    )
+
+    critic = RslRlCNNModelCfg(
+        hidden_dims=[128, 128, 128],
+        activation="elu",
+        obs_normalization=True,
+        cnn_cfg=RslRlCNNModelCfg.CNNCfg(
+            output_channels=[16, 32],
+            kernel_size=[3, 3],
+            stride=[2, 2],
+            activation="relu",
+            max_pool=False,
+            global_pool="avg",
+        ),
+        distribution_cfg=RslRlCNNModelCfg.GaussianDistributionCfg(init_std=0.8, std_type="log"),
     )
     algorithm = RslRlPpoAlgorithmCfg(
         value_loss_coef=1.0,
@@ -45,14 +78,38 @@ class Go2LidarRoughPPORunnerCfg(RslRlOnPolicyRunnerCfg):
     max_iterations = 50000
     save_interval = 50
     experiment_name = "go2_lidar"
-    policy = RslRlPpoActorCriticCfg(
-        init_noise_std=1.0,
-        noise_std_type="log",
-        actor_obs_normalization=False,
-        critic_obs_normalization=False,
-        actor_hidden_dims=[512, 256, 128],
-        critic_hidden_dims=[512, 256, 128],
+    obs_groups = {
+        "actor": ["actor_proprio", "actor_grid"],
+        "critic": ["critic_proprio", "critic_grid"],
+    }
+    actor = RslRlCNNModelCfg(
+        hidden_dims=[256, 128, 128],
         activation="elu",
+        obs_normalization=True,
+        cnn_cfg = RslRlCNNModelCfg.CNNCfg(
+            output_channels=[32, 64, 64],   # more capacity, 3 layers
+            kernel_size=[3, 3, 3],
+            stride=[1, 1, 1],               # no striding — input is already tiny
+            activation="relu",
+            max_pool=False,
+            global_pool="none",          # keep spatial info, not avg pool
+        ),
+        distribution_cfg=RslRlCNNModelCfg.GaussianDistributionCfg(init_std=0.8, std_type="log"),
+    )
+    critic = RslRlCNNModelCfg(
+        hidden_dims=[256, 128, 128],
+        activation="elu",
+        obs_normalization=True,
+        cnn_cfg = RslRlCNNModelCfg.CNNCfg(
+            output_channels=[32, 64, 64],   # more capacity, 3 layers
+            kernel_size=[3, 3, 3],
+            stride=[1, 1, 1],               # no striding — input is already tiny
+            activation="relu",
+            max_pool=False,
+            global_pool="none",          # keep spatial info, not avg pool
+            
+        ),
+        distribution_cfg=RslRlCNNModelCfg.GaussianDistributionCfg(init_std=0.8, std_type="log"),
     )
     algorithm = RslRlPpoAlgorithmCfg(
         value_loss_coef=1.0,
@@ -60,41 +117,8 @@ class Go2LidarRoughPPORunnerCfg(RslRlOnPolicyRunnerCfg):
         clip_param=0.2,
         entropy_coef=0.01,
         num_learning_epochs=5,
-        num_mini_batches=4,
-        learning_rate=1.0e-3,
-        schedule="adaptive",
-        gamma=0.99,
-        lam=0.95,
-        desired_kl=0.01,
-        max_grad_norm=1.0,
-    )
-
-@configclass
-class Go2LidarRoughPPORunnerRecurrentCfg(RslRlOnPolicyRunnerCfg):
-    num_steps_per_env = 24
-    max_iterations = 50000
-    save_interval = 50
-    experiment_name = "go2_lidar"
-    policy = RslRlPpoActorCriticRecurrentCfg(
-        init_noise_std=1.0,
-        noise_std_type="log",
-        rnn_type="lstm",
-        rnn_hidden_dim=128,
-        rnn_num_layers=2,
-        actor_obs_normalization=True,
-        critic_obs_normalization=True,
-        actor_hidden_dims=[256, 128],
-        critic_hidden_dims=[256, 128],
-        activation="elu",
-    )
-    algorithm = RslRlPpoAlgorithmCfg(
-        value_loss_coef=1.0,
-        use_clipped_value_loss=True,
-        clip_param=0.2,
-        entropy_coef=0.01,
-        num_learning_epochs=5,
-        num_mini_batches=4,
-        learning_rate=1.0e-3,
+        num_mini_batches=8,
+        learning_rate=3e-4,
         schedule="adaptive",
         gamma=0.99,
         lam=0.95,

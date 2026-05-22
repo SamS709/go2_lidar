@@ -45,7 +45,7 @@ torch.set_printoptions(precision=2, linewidth=200, sci_mode=False)
 import isaaclab.sim as sim_utils
 from isaaclab.assets import AssetBaseCfg
 from isaaclab.scene import InteractiveScene, InteractiveSceneCfg
-from isaaclab.sensors.ray_caster import MultiMeshRayCasterCfg, patterns
+from isaaclab.sensors.ray_caster import MultiMeshRayCasterCfg, patterns, RayCasterCfg
 from isaaclab.terrains import TerrainImporterCfg
 from isaaclab.utils import configclass
 from isaaclab.utils.math import quat_from_euler_xyz, quat_apply, quat_conjugate
@@ -220,22 +220,37 @@ class RaycasterSensorSceneCfg(InteractiveSceneCfg):
     #     debug_vis=True,
     #     mesh_prim_paths=["/World/ground"],
     # )
-    ray_caster = MultiMeshRayCasterCfg(
-        prim_path="{ENV_REGEX_NS}/Robot/base",
+    # ray_caster = MultiMeshRayCasterCfg(
+    #     prim_path="{ENV_REGEX_NS}/Robot/base",
+    #     update_period=1 / 60,
+    #     offset=MultiMeshRayCasterCfg.OffsetCfg(
+    #         pos=OFFSET,
+    #         rot=(W, X, Y, Z),  
+    #     ),
+    #     # Keep a single target rooted at /World; MultiMeshRayCaster will include all
+    #     # supported meshes/shapes below it (including the room wall cubes).
+    #     mesh_prim_paths=["/World"],
+    #     ray_alignment="base",
+    #     pattern_cfg=patterns.LidarPatternCfg(
+    #         channels=64, vertical_fov_range=[-0.0, 90.0], horizontal_fov_range=[-180, 180], horizontal_res=2.0
+    #     ),
+    #     max_distance= 4.0  ,
+    #     debug_vis=not args_cli.headless,
+    # )
+    ray_caster = RayCasterCfg(
+        prim_path="/World/envs/env_.*/Robot/base",
         update_period=1 / 60,
-        offset=MultiMeshRayCasterCfg.OffsetCfg(
-            pos=OFFSET,
-            rot=(W, X, Y, Z),  
+        offset=RayCasterCfg.OffsetCfg(
+            pos=(0.28945, 0.0, -0.04682),
+            rot=(0.13131596830945724, 0.0, 0.9913405653290647, 0.0),
         ),
-        # Keep a single target rooted at /World; MultiMeshRayCaster will include all
-        # supported meshes/shapes below it (including the room wall cubes).
         mesh_prim_paths=["/World"],
         ray_alignment="base",
         pattern_cfg=patterns.LidarPatternCfg(
-            channels=64, vertical_fov_range=[-0.0, 90.0], horizontal_fov_range=[-180, 180], horizontal_res=2.0
+            channels=64, vertical_fov_range=[0.0, 90.0], horizontal_fov_range=[-180, 180], horizontal_res=2.0
         ),
-        max_distance= 4.0  ,
-        debug_vis=not args_cli.headless,
+        max_distance=4.0,
+        debug_vis=True,
     )
 
 
@@ -404,6 +419,7 @@ def create_grid_from_cloud(scene):
     ray_hits_w = data.ray_hits_w  # (num_envs, num_rays, 3)
     lidar_pos_w = data.pos_w      # (num_envs, 3)
     lidar_quat_w = data.quat_w    # (num_envs, 4)
+    print(lidar_quat_w)
 
     rays_rel_w = ray_hits_w - lidar_pos_w.unsqueeze(1)
     num_envs, num_rays, _ = rays_rel_w.shape
@@ -411,6 +427,8 @@ def create_grid_from_cloud(scene):
         quat_conjugate(lidar_quat_w).unsqueeze(1).expand(num_envs, num_rays, 4).reshape(-1, 4),
         rays_rel_w.reshape(-1, 3),
     )
+    
+    # rays_lidar = rays_rel_w
 
     cell_size_m = 0.1
     inv_cell_size = 1.0 / cell_size_m
@@ -461,14 +479,14 @@ def run_simulator(sim: sim_utils.SimulationContext, scene: InteractiveScene):
             # we offset the root state by the origin since the states are written in simulation world frame
             # if this is not done, then the robots will be spawned at the (0, 0, 0) of the simulation world
             root_state = scene["robot"].data.default_root_state.clone()
-            root_state[:, :3] += scene.env_origins
+            root_state[:, :2] += scene.env_origins[:,:2]
             
             # root_state[:, 0] -= 5.8
             
             # root_state[:, 0] -= 3.8
             # root_state[:, 1] -= 3.0
             
-            root_state[:, 0] -= ROOM_INNER_SIZE/2.0 +0.8
+            root_state[:, 0] -= ROOM_INNER_SIZE/2.0 + 0.8
             root_state[:, 1] += 2.0*ROOM_CENTER_Y
             
             scene["robot"].write_root_pose_to_sim(root_state[:, :7])
@@ -478,12 +496,12 @@ def run_simulator(sim: sim_utils.SimulationContext, scene: InteractiveScene):
                 scene["robot"].data.default_joint_pos.clone(),
                 scene["robot"].data.default_joint_vel.clone(),
             )
-            target_add = torch.zeros_like(joint_pos)
-            target_add[:,4] += 1.0
-            target_add[:,5] += 1.0
-            target_add[:,8] -= 1.0
-            target_add[:,9] -= 1.0
-            joint_pos += torch.rand_like(joint_pos) * 0.1 + target_add
+            # target_add = torch.zeros_like(joint_pos)
+            # target_add[:,4] += 1.0
+            # target_add[:,5] += 1.0
+            # target_add[:,8] -= 1.0
+            # target_add[:,9] -= 1.0
+            # joint_pos += torch.rand_like(joint_pos) * 0.1 + target_add
             scene["robot"].write_joint_state_to_sim(joint_pos, joint_vel)
             # clear internal buffers
             scene.reset()

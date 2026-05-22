@@ -223,68 +223,70 @@ class Go2LidarEnv(DirectRLEnv):
         return height_map_actor
     
     def _get_observations(self) -> dict:
-        height_data = None
-        height_data_actor = None
-        if isinstance(self.cfg, Go2LidarRoughEnvCfg):
-            # Previous height logic kept for reference:
-            # height_data = self._compute_height_data("normal")
-            height_data = self._compute_height_data_from_cloud()
-            height_data_actor = height_data + (2.0 * torch.rand_like(height_data) - 1.0) * float(0.01) * self.cfg.randomize
-            
-            height_data_actor = self._process_heightmap(height_data_actor) 
-            height_data = self._sanitize_tensor(height_data, "height_data", clamp_abs=10.0)
-            height_data_actor = self._sanitize_tensor(height_data_actor, "height_data_actor", clamp_abs=10.0)
-            # torch.set_printoptions(precision=2, linewidth=1000, sci_mode=False)
-            # print(height_data.reshape(self.num_envs, 15, 10).flip(1,2))            
-            
-            
-            # x_data = (self._height_scanner.data.pos_w[:, 0].unsqueeze(1) - self._height_scanner.data.ray_hits_w[..., 0]).reshape(self.num_envs, 15, 10).flip(1,2)
-            # print(x_data)
-            # height_data = self._get_lidar_obs()
-            # print(torch.sum(height_data_actor==0.0))
+        # Unified observation construction for all env variants.
+        # Build height/grid tensors if available; otherwise provide zeroed grids.
+        x_cells = max(1, int((float(self.cfg.x_range[1]) - float(self.cfg.x_range[0])) / float(self.cfg.res)))
+        y_cells = max(1, int((float(self.cfg.y_range[1]) - float(self.cfg.y_range[0])) / float(self.cfg.res)))
+
+        height_data = self._compute_height_data_from_cloud() - 0.28
+        height_data_actor = height_data + (2.0 * torch.rand_like(height_data) - 1.0) * float(0.01) * self.cfg.randomize
+        height_data_actor = self._process_heightmap(height_data_actor)
+        height_data = self._sanitize_tensor(height_data, "height_data", clamp_abs=10.0)
+        height_data_actor = self._sanitize_tensor(height_data_actor, "height_data_actor", clamp_abs=10.0)
+        height_data = height_data.view(self.num_envs, x_cells, y_cells).unsqueeze(1)
+        height_data_actor = height_data_actor.view(self.num_envs, x_cells, y_cells).unsqueeze(1)
+    
+
+        # Actor (student) proprio observations — limited/noisy proprio inputs used by policy.
+        actor_proprio = torch.cat(
+            [
+                self._robot.data.root_ang_vel_b
+                + (2.0 * torch.rand_like(self._robot.data.root_lin_vel_b) - 1.0) * float(0.1) * self.cfg.randomize,
+                self._robot.data.projected_gravity_b
+                + (2.0 * torch.rand_like(self._robot.data.projected_gravity_b) - 1.0) * float(0.05) * self.cfg.randomize,
+                self.command_manager.get_command("base_velocity"),
+                self._robot.data.joint_pos
+                - self._robot.data.default_joint_pos
+                + (2.0 * torch.rand_like(self._robot.data.default_joint_pos) - 1.0) * float(0.01) * self.cfg.randomize,
+                self._robot.data.joint_vel
+                + (2.0 * torch.rand_like(self._robot.data.joint_vel) - 1.0) * float(0.1) * self.cfg.randomize,
+                self._actions,
+            ],
+            dim=-1,
+        )
+        actor_proprio = self._sanitize_tensor(actor_proprio, "actor_proprio", clamp_abs=100.0)
+
+        # Critic (privileged) proprio observations — include privileged sensors like base linear velocity,
+        # contact flags and other privileged terms useful for value estimation.
         foot_contacts = (torch.norm(self._contact_sensor.data.net_forces_w[:, self._feet_ids], dim=-1) > 1.0).float()
-        # Extract yaw angle from quaternion and encode as sin/cos
-        actor_obs = torch.cat(
+        is_contact = (
+            torch.max(torch.norm(self._contact_sensor.data.net_forces_w_history[:, :, self._body_contact_info_teacher], dim=-1), dim=1)[0] > 1.0
+        )
+
+        critic_proprio = torch.cat(
             [
-                tensor
-                for tensor in (
-                    self._robot.data.root_ang_vel_b + (2.0 * torch.rand_like(self._robot.data.root_lin_vel_b) - 1.0) * float(0.1) * self.cfg.randomize,
-                    self._robot.data.projected_gravity_b + (2.0 * torch.rand_like(self._robot.data.projected_gravity_b) - 1.0) * float(0.05) * self.cfg.randomize,
-                    self.command_manager.get_command("base_velocity"),
-                    self._robot.data.joint_pos - self._robot.data.default_joint_pos + (2.0 * torch.rand_like(self._robot.data.default_joint_pos) - 1.0) * float(0.01) * self.cfg.randomize,
-                    self._robot.data.joint_vel + (2.0 * torch.rand_like(self._robot.data.joint_vel) - 1.0) * float(0.1) * self.cfg.randomize,
-                    height_data_actor,
-                    self._actions,
-                )
-                if tensor is not None
+                self._robot.data.root_lin_vel_b,
+                self._robot.data.root_ang_vel_b,
+                self._robot.data.projected_gravity_b,
+                self.command_manager.get_command("base_velocity"),
+                self._robot.data.joint_pos - self._robot.data.default_joint_pos,
+                self._robot.data.joint_vel,
+                foot_contacts,
+                self._actions,
             ],
             dim=-1,
         )
-        actor_obs = self._sanitize_tensor(actor_obs, "actor_obs", clamp_abs=100.0)
-        
-        critic_obs = torch.cat(
-            [
-                tensor
-                for tensor in (
-                    self._robot.data.root_lin_vel_b,
-                    self._robot.data.root_ang_vel_b,
-                    self._robot.data.projected_gravity_b,
-                    self.command_manager.get_command("base_velocity"),
-                    self._robot.data.joint_pos - self._robot.data.default_joint_pos,
-                    self._robot.data.joint_vel,
-                    foot_contacts,
-                    height_data,
-                    self._actions,
-                )
-                if tensor is not None
-            ],
-            dim=-1,
-        )
-        critic_obs = self._sanitize_tensor(critic_obs, "critic_obs", clamp_abs=100.0)
-        observations = {"policy": actor_obs,
-                        "critic": critic_obs}
-        self._previous_actions = self._actions
-        return observations
+        critic_proprio = self._sanitize_tensor(critic_proprio, "critic_proprio", clamp_abs=100.0)
+
+        # Update previous actions and return unified observation dict (flat keys for runner grouping).
+        self._previous_actions = self._actions.clone()
+
+        return {
+            "actor_proprio": actor_proprio,
+            "actor_grid": height_data_actor,
+            "critic_proprio": critic_proprio,
+            "critic_grid": height_data,
+        }
 
     def _get_rewards(self) -> torch.Tensor:
         # linear velocity tracking
@@ -370,7 +372,7 @@ class Go2LidarEnv(DirectRLEnv):
         default_root_state = self._robot.data.default_root_state[env_ids]
         default_root_state[:, :3] += self._terrain.env_origins[env_ids]
         # Add x-axis offset to spawn position
-        # default_root_state[:, 0] -= 3.0  # Offset in meters (change this value as needed)
+        # default_root_state[:, 0] += 0.5  # Offset in meters (change this value as needed)
         # # Rotate 45 degrees around z-axis at spawn
         # import math
         # angle = math.pi / 4  # 45 degrees

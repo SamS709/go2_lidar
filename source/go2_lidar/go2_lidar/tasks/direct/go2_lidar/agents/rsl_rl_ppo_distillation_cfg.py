@@ -46,6 +46,8 @@ class Go2LidarTeacherPretrainRunnerCfg(RslRlOnPolicyRunnerCfg):
     save_interval = 50
     experiment_name = "go2_distillation"
     run_name = "teacher"
+    # Prefer teacher checkpoints when playing/resuming.
+    load_run = ".*_teacher"
 
     # rsl_rl (classic) expects actor/critic observation set names for PPO.
     # Use privileged teacher observations for both actor and critic.
@@ -108,6 +110,13 @@ class Go2LidarDistillationRunnerCfg(RslRlDistillationRunnerCfg):
     )
 
 
+@configclass
+class Go2LidarDistillationPlayRunnerCfg(Go2LidarDistillationRunnerCfg):
+    """Play-time config that loads the distilled student run."""
+
+    load_run = ".*_distillation"
+
+
 
 @configclass
 class Go2LidarTeacherPretrainCNNRunnerCfg(RslRlOnPolicyRunnerCfg):
@@ -118,6 +127,8 @@ class Go2LidarTeacherPretrainCNNRunnerCfg(RslRlOnPolicyRunnerCfg):
     save_interval = 50
     experiment_name = "go2_distillation_cnn"
     run_name = "teacher"
+    # Prefer teacher checkpoints when playing/resuming.
+    load_run = ".*_teacher"
 
     # rsl_rl expects observation routing at runner level.
     # Provide both 1D proprio and 2D exteroceptive height scans to each model.
@@ -219,4 +230,11 @@ class Go2LidarDistillationCNNRunnerCfg(RslRlDistillationRunnerCfg):
         learning_rate=1.0e-3,
         gradient_length=15,
     )
+
+
+@configclass
+class Go2LidarDistillationCNNPlayRunnerCfg(Go2LidarDistillationCNNRunnerCfg):
+    """Play-time config that loads the distilled student run."""
+
+    load_run = ".*_distillation"
 

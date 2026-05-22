@@ -240,14 +240,14 @@ class Go2LidarRoughEnvCfg(Go2LidarFlatEnvCfg):
             # )
         },
     )
-    # ROUGH_TERRAINS_CFG.num_cols = 2
-    # ROUGH_TERRAINS_CFG.num_rows = 3
+    # ROUGH_TERRAINS_CFG.num_cols = 4
+    # ROUGH_TERRAINS_CFG.num_rows = 4
     # ROUGH_TERRAINS_CFG.sub_terrains["pyramid_stairs_inv"].step_height_range = (0.1, 0.1)
     
     ROUGH_TERRAINS_CFG.sub_terrains["boxes"].grid_height_range = (0.025, 0.1)
     ROUGH_TERRAINS_CFG.sub_terrains["random_rough"].noise_range = (0.01, 0.06)
+    # ROUGH_TERRAINS_CFG.sub_terrains["random_rough"].noise_range = (0.002, 0.004)
     ROUGH_TERRAINS_CFG.sub_terrains["random_rough"].noise_step = 0.01
-    
     
     # ROUGH_TERRAINS_CFG.sub_terrains["pyramid_stairs"].proportion = 0.0
     # ROUGH_TERRAINS_CFG.sub_terrains["random_rough"].proportion = 0.0

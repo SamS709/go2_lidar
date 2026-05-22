@@ -53,7 +53,8 @@ class Go2TeacherStudentEnv(Go2LidarEnv):
         height_data_student = self._process_heightmap(height_data_student) 
         height_data = self._sanitize_tensor(height_data, "height_data", clamp_abs=10.0)
         height_data_student = self._sanitize_tensor(height_data_student, "height_data_student", clamp_abs=10.0)
-        
+                 
+            
         
         
         base_ang_vel = self._robot.data.root_ang_vel_b
@@ -61,12 +62,11 @@ class Go2TeacherStudentEnv(Go2LidarEnv):
         joint_pos_rel = self._robot.data.joint_pos - self._robot.data.default_joint_pos
         joint_vel = self._robot.data.joint_vel
         velocity_commands = self.command_manager.get_command("base_velocity")
-        torch.set_printoptions(precision=2, linewidth=1000, sci_mode=False)
         cell_size_m = float(self.cfg.res)
         inv_cell_size = 1.0 / cell_size_m
         x_min, x_max = float(self.cfg.x_range[0]), float(self.cfg.x_range[1])
         y_min, y_max = float(self.cfg.y_range[0]), float(self.cfg.y_range[1])
-        print(height_data.reshape(int((x_max - x_min)*inv_cell_size),int((y_max - y_min)*inv_cell_size)))
+        # print(height_data.reshape(int((x_max - x_min)*inv_cell_size),int((y_max - y_min)*inv_cell_size)))
         
         # print(height_data.reshape(self.num_envs, 15, 10).flip(1,2))            
             
@@ -147,7 +147,8 @@ class Go2TeacherStudentCNNEnv(Go2LidarEnv):
         height_data_student = self._process_heightmap(height_data_student) 
         height_data = height_data.view(self.num_envs, C, H, W)
         height_data_student = height_data_student.view(self.num_envs, C, H, W) 
-        
+        # torch.set_printoptions(precision=2, linewidth=1000, sci_mode=False)
+        # print(height_data+0.5)   
         base_ang_vel = self._robot.data.root_ang_vel_b
         projected_gravity = self._robot.data.projected_gravity_b
         joint_pos_rel = self._robot.data.joint_pos - self._robot.data.default_joint_pos

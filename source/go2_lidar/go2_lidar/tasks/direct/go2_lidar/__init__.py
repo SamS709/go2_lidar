@@ -49,6 +49,8 @@ gym.register(
         "rsl_rl_cfg_entry_point": f"{agents.__name__}.rsl_rl_ppo_distillation_cfg:Go2LidarTeacherPretrainRunnerCfg",
         # Use this explicit key with --agent for actual student distillation.
         "rsl_rl_distillation_cfg_entry_point": f"{agents.__name__}.rsl_rl_ppo_distillation_cfg:Go2LidarDistillationRunnerCfg",
+        # Use this explicit key with --agent for play (loads distilled student).
+        "rsl_rl_distillation_play_cfg_entry_point": f"{agents.__name__}.rsl_rl_ppo_distillation_cfg:Go2LidarDistillationPlayRunnerCfg",
     },
 )
 
@@ -62,6 +64,8 @@ gym.register(
         "rsl_rl_cfg_entry_point": f"{agents.__name__}.rsl_rl_ppo_distillation_cfg:Go2LidarTeacherPretrainCNNRunnerCfg",
         # Use this explicit key with --agent for actual student distillation.
         "rsl_rl_distillation_cfg_entry_point": f"{agents.__name__}.rsl_rl_ppo_distillation_cfg:Go2LidarDistillationCNNRunnerCfg",
+        # Use this explicit key with --agent for play (loads distilled student).
+        "rsl_rl_distillation_play_cfg_entry_point": f"{agents.__name__}.rsl_rl_ppo_distillation_cfg:Go2LidarDistillationCNNPlayRunnerCfg",
     },
 )
 
