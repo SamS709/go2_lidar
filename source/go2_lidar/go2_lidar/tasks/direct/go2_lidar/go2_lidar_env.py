@@ -160,7 +160,7 @@ class Go2LidarEnv(DirectRLEnv):
             ).reshape(N, H, 3)
 
             # 3. The height in the base frame is the Z component (negative = below robot)
-            height_data = -hits_in_base[..., 2] - 0.5 
+            height_data = -hits_in_base[..., 2] - 0.28
             return height_data      
 
     def _compute_height_data_from_cloud(self):

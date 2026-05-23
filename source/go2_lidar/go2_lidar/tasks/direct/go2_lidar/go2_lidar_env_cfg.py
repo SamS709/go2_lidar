@@ -301,21 +301,21 @@ class Go2LidarRoughEnvCfg(Go2LidarFlatEnvCfg):
     #     max_distance=4.0,
     #     debug_vis=False,
     # )
-    height_scanner = RayCasterCfg(
-        prim_path="/World/envs/env_.*/Robot/base",
-        update_period=1 / 60,
-        offset=RayCasterCfg.OffsetCfg(
-            pos=lidar_offset,
-            rot=lidar_rotation,
-        ),
-        mesh_prim_paths=["/World"],
-        ray_alignment="base",
-        pattern_cfg=patterns.LidarPatternCfg(
-            channels=64, vertical_fov_range=[0.0, 90.0], horizontal_fov_range=[-180, 180], horizontal_res=2.0
-        ),
-        max_distance=4.0,
-        debug_vis=False,
-    )
+    # height_scanner = RayCasterCfg(
+    #     prim_path="/World/envs/env_.*/Robot/base",
+    #     update_period=1 / 60,
+    #     offset=RayCasterCfg.OffsetCfg(
+    #         pos=lidar_offset,
+    #         rot=lidar_rotation,
+    #     ),
+    #     mesh_prim_paths=["/World"],
+    #     ray_alignment="base",
+    #     pattern_cfg=patterns.LidarPatternCfg(
+    #         channels=64, vertical_fov_range=[0.0, 90.0], horizontal_fov_range=[-180, 180], horizontal_res=2.0
+    #     ),
+    #     max_distance=4.0,
+    #     debug_vis=False,
+    # )
    
     # height_scanner = RayCasterCfg(
     #     prim_path="/World/envs/env_.*/Robot/base",
@@ -340,15 +340,15 @@ class Go2LidarRoughEnvCfg(Go2LidarFlatEnvCfg):
     # the heightmap is 1.5 * 1, offseted by lidar offset + 0.25 on x such that it detects 1 metter in front of and 0.5 meters behind the lidar frame
     # on the real robot, from the lidar frame: grid 0.5 meters left and right and 1 meter front and 0.5 meters behind
     # Previous scanner path kept for reference (disabled):
-    # height_scanner = RayCasterCfg(
-    #     update_period=1 / 20,
-    #     prim_path="/World/envs/env_.*/Robot/base",
-    #     offset=RayCasterCfg.OffsetCfg(pos=(0.28945 + 0.25, 0.0, 0.5)),
-    #     # ray_alignment="base",
-    #     pattern_cfg=patterns.GridPatternCfg(resolution=0.1, size=[1.4, 0.9], ordering="yx"),
-    #     debug_vis=False,
-    #     mesh_prim_paths=["/World/ground"],
-    # )
+    height_scanner = RayCasterCfg(
+        update_period=1 / 20,
+        prim_path="/World/envs/env_.*/Robot/base",
+        offset=RayCasterCfg.OffsetCfg(pos=(0.28945 + 0.25, 0.0, 0.5)),
+        # ray_alignment="base",
+        pattern_cfg=patterns.GridPatternCfg(resolution=0.1, size=[1.4, 0.9], ordering="yx"),
+        debug_vis=False,
+        mesh_prim_paths=["/World/ground"],
+    )
    
 
     

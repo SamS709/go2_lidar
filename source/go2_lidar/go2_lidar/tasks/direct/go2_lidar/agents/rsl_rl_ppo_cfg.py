@@ -86,30 +86,31 @@ class Go2LidarRoughPPORunnerCfg(RslRlOnPolicyRunnerCfg):
         hidden_dims=[512, 256, 128],
         activation="elu",
         obs_normalization=True,
-        cnn_cfg = RslRlCNNModelCfg.CNNCfg(
-            output_channels=[32, 64, 64],   # more capacity, 3 layers
-            kernel_size=[3, 3, 3],
-            stride=[1, 1, 1],               # no striding — input is already tiny
+        cnn_cfg=RslRlCNNModelCfg.CNNCfg(
+            output_channels=[16, 32],
+            kernel_size=[5, 3],         
+            stride=[2, 2],
             activation="relu",
             max_pool=False,
-            global_pool="none",          # keep spatial info, not avg pool
+            global_pool="none",         
         ),
-        distribution_cfg=RslRlCNNModelCfg.GaussianDistributionCfg(init_std=0.8, std_type="log"),
+        distribution_cfg=RslRlCNNModelCfg.GaussianDistributionCfg(
+            init_std=0.8, std_type="log"
+        ),
     )
+
     critic = RslRlCNNModelCfg(
         hidden_dims=[512, 256, 128],
         activation="elu",
         obs_normalization=True,
-        cnn_cfg = RslRlCNNModelCfg.CNNCfg(
-            output_channels=[32, 64, 64],   # more capacity, 3 layers
-            kernel_size=[3, 3, 3],
-            stride=[1, 1, 1],               # no striding — input is already tiny
+        cnn_cfg=RslRlCNNModelCfg.CNNCfg(
+            output_channels=[16, 32],
+            kernel_size=[5, 3],
+            stride=[2, 2],
             activation="relu",
             max_pool=False,
-            global_pool="none",          # keep spatial info, not avg pool
-            
+            global_pool="none",
         ),
-        distribution_cfg=RslRlCNNModelCfg.GaussianDistributionCfg(init_std=0.8, std_type="log"),
     )
     algorithm = RslRlPpoAlgorithmCfg(
         value_loss_coef=1.0,
