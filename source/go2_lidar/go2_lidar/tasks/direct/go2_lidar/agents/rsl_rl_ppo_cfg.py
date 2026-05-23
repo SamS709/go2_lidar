@@ -83,7 +83,7 @@ class Go2LidarRoughPPORunnerCfg(RslRlOnPolicyRunnerCfg):
         "critic": ["critic_proprio", "critic_grid"],
     }
     actor = RslRlCNNModelCfg(
-        hidden_dims=[256, 128, 128],
+        hidden_dims=[512, 256, 128],
         activation="elu",
         obs_normalization=True,
         cnn_cfg = RslRlCNNModelCfg.CNNCfg(
@@ -97,7 +97,7 @@ class Go2LidarRoughPPORunnerCfg(RslRlOnPolicyRunnerCfg):
         distribution_cfg=RslRlCNNModelCfg.GaussianDistributionCfg(init_std=0.8, std_type="log"),
     )
     critic = RslRlCNNModelCfg(
-        hidden_dims=[256, 128, 128],
+        hidden_dims=[512, 256, 128],
         activation="elu",
         obs_normalization=True,
         cnn_cfg = RslRlCNNModelCfg.CNNCfg(
