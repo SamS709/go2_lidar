@@ -50,7 +50,7 @@ class Go2TeacherStudentEnv(Go2LidarEnv):
         # height_data = self._compute_height_data("normal")
         height_data = self._compute_height_data_from_cloud()
         height_data_student = height_data + (2.0 * torch.rand_like(height_data) - 1.0) * float(0.01) * self.cfg.randomize
-        height_data_student = self._process_heightmap(height_data_student) 
+        height_data_student = self._randomize_heightmap(height_data_student) 
         height_data = self._sanitize_tensor(height_data, "height_data", clamp_abs=10.0)
         height_data_student = self._sanitize_tensor(height_data_student, "height_data_student", clamp_abs=10.0)
                  
@@ -144,7 +144,7 @@ class Go2TeacherStudentCNNEnv(Go2LidarEnv):
         # height_data = self._compute_height_data("normal")
         height_data = self._compute_height_data_from_cloud() - 0.5
         height_data_student = height_data + (2.0 * torch.rand_like(height_data) - 1.0) * float(0.01) * self.cfg.randomize
-        height_data_student = self._process_heightmap(height_data_student) 
+        height_data_student = self._randomize_heightmap(height_data_student) 
         height_data = height_data.view(self.num_envs, C, H, W)
         height_data_student = height_data_student.view(self.num_envs, C, H, W) 
         # torch.set_printoptions(precision=2, linewidth=1000, sci_mode=False)
@@ -235,7 +235,7 @@ class Go2StudentEnv(Go2LidarEnv):
         # height_data = self._compute_height_data("normal")
         height_data = self._compute_height_data_from_cloud()
         height_data_student = height_data + (2.0 * torch.rand_like(height_data) - 1.0) * float(0.01) * self.cfg.randomize
-        height_data_student = self._process_heightmap(height_data_student) 
+        height_data_student = self._randomize_heightmap(height_data_student) 
         height_data = self._sanitize_tensor(height_data, "height_data", clamp_abs=10.0)
         height_data_student = self._sanitize_tensor(height_data_student, "height_data_actor", clamp_abs=10.0)
         

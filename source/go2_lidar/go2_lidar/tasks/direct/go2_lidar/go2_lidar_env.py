@@ -18,7 +18,7 @@ from isaaclab.utils.math import quat_conjugate, quat_apply, quat_mul, quat_inv
 from .go2_lidar_env_cfg import Go2LidarFlatEnvCfg, Go2LidarRoughEnvCfg
 
 """ windows:
-python .\scripts\rsl_rl\train.py --task Isaac-Velocity-Rough-Go2-Lidar-Direct-v0 --num_envs 2048 --headless
+python ./scripts/rsl_rl/train.py --task Isaac-Velocity-Rough-Go2-Lidar-Direct-v0 --num_envs 2048 --headless
 """
 
 class Go2LidarEnv(DirectRLEnv):
@@ -79,7 +79,7 @@ class Go2LidarEnv(DirectRLEnv):
             tensor = torch.clamp(tensor, min=-clamp_abs, max=clamp_abs)
         return tensor
 
-    def create_gaussian_heightmap(self, h, w):
+    def _create_gaussian_heightmap(self, h, w):
         y = torch.arange(h, device=self.device, dtype=torch.float32)
         x = torch.arange(w, device=self.device, dtype=torch.float32)
         yy, xx = torch.meshgrid(y, x, indexing='ij')
@@ -94,7 +94,20 @@ class Go2LidarEnv(DirectRLEnv):
         # Normalize to create probability distribution
         gaussian_prob = gaussian_dist / gaussian_dist.sum()
         self.gaussian_prob_heightmap  = gaussian_prob.flatten()
-        
+        self.sampled_indices = torch.multinomial(self.gaussian_prob_heightmap, self.cfg.n_zeros, replacement=True)
+        self.same_zeros_count = 0
+        self.reset_zeros_freq = int(torch.randint(1, self.cfg.max_reset_zeros_freq + 1, (1,), device=self.device).item())        
+    
+    def _apply_yaw_rotation(self, points: torch.Tensor) -> torch.Tensor:
+        angles = torch.deg2rad(self._rots).unsqueeze(-1)
+        cos_angles = torch.cos(angles)
+        sin_angles = torch.sin(angles)
+        x_coord = points[..., 0]
+        y_coord = points[..., 1]
+        z_coord = points[..., 2]
+        rotated_x = x_coord * cos_angles + z_coord * sin_angles
+        rotated_z = -x_coord * sin_angles + z_coord * cos_angles
+        return torch.stack((rotated_x, y_coord, rotated_z), dim=-1)
 
     def _setup_scene(self):
         self._robot = Articulation(self.cfg.robot)
@@ -109,7 +122,13 @@ class Go2LidarEnv(DirectRLEnv):
             # self._height_scanner_critic = RayCaster(self.cfg.height_scanner_critic)
             self.scene.sensors["height_scanner"] = self._height_scanner
             # self.scene.sensors["height_scanner_critic"] = self._height_scanner_critic
-            self.create_gaussian_heightmap(15, 10)
+            self._create_gaussian_heightmap(15, 10)
+            self._rots = torch.empty(self.num_envs, device=self.device)
+            self._offsets = torch.empty(self.num_envs, device=self.device)
+            self._rots.uniform_(-self.cfg.max_rot, self.cfg.max_rot)
+            self._offsets.uniform_(-self.cfg.max_offset, self.cfg.max_offset)
+            # self._rots = torch.tensor()
+            
 
         self.cfg.terrain.num_envs = self.scene.cfg.num_envs
         self.cfg.terrain.env_spacing = self.scene.cfg.env_spacing
@@ -130,14 +149,23 @@ class Go2LidarEnv(DirectRLEnv):
         self._processed_actions = self.cfg.action_scale * self._actions + self._robot.data.default_joint_pos
 
     def _apply_action(self):
-        self._robot.set_joint_position_target(self._processed_actions)
-        # self._robot.set_joint_position_target(self._robot.data.default_joint_pos)    
+        # self._robot.set_joint_position_target(self._processed_actions)
+        self._robot.set_joint_position_target(self._robot.data.default_joint_pos)    
         
-    def _compute_height_data(self, method):
+    def _compute_height_data(self, method, randomize: bool = False):
         if method == "normal":
-            return (
+            height_data = (
                 self._height_scanner.data.pos_w[:, 2].unsqueeze(1) - self._height_scanner.data.ray_hits_w[..., 2] - 0.28
             ).clip(-1.0, 1.0) 
+            if randomize and hasattr(self, "_rots"):
+                ray_hits_w = self._height_scanner.data.ray_hits_w
+                ray_hits_rel = ray_hits_w - self._height_scanner.data.pos_w.unsqueeze(1)
+                ray_hits_rel = self._apply_yaw_rotation(ray_hits_rel)
+                height_data = (self._height_scanner.data.pos_w[:, 2].unsqueeze(1) - ray_hits_rel[..., 2] - 0.28).clip(-1.0, 1.0)
+                height_data = self._apply_offset(height_data)  
+                height_data += (2.0 * torch.rand_like(height_data) - 1.0) * float(0.01)
+                height_data = self._zero_heightmap_cells(height_data)       
+            return height_data
         else:            
             # Get sensor/robot pose in world frame
             pos_w = self._height_scanner.data.pos_w          # (N, 3)
@@ -159,11 +187,18 @@ class Go2LidarEnv(DirectRLEnv):
                 hits_relative.reshape(N * H, 3)
             ).reshape(N, H, 3)
 
+            if randomize and hasattr(self, "_rots"):
+                hits_in_base = self._apply_yaw_rotation(hits_in_base)
+
             # 3. The height in the base frame is the Z component (negative = below robot)
             height_data = -hits_in_base[..., 2] - 0.28
+            if randomize:
+                height_data = self._apply_offset(height_data)
+                height_data += (2.0 * torch.rand_like(height_data) - 1.0) * float(0.01)
+                height_data = self._zero_heightmap_cells(height_data) 
             return height_data      
 
-    def _compute_height_data_from_cloud(self):
+    def _compute_height_data_from_cloud(self, randomize: bool = False):
         """Compute flattened heightmap in lidar frame using cfg x/y bounds and cell size."""
         data = self._height_scanner.data
         ray_hits_w = data.ray_hits_w
@@ -176,6 +211,9 @@ class Go2LidarEnv(DirectRLEnv):
             quat_conjugate(lidar_quat_w).unsqueeze(1).expand(num_envs, num_rays, 4).reshape(-1, 4),
             rays_rel_w.reshape(-1, 3),
         ).reshape(num_envs, num_rays, 3)
+
+        if randomize and hasattr(self, "_rots"):
+            rays_lidar = self._apply_yaw_rotation(rays_lidar)
 
         cell_size_m = float(self.cfg.res)
         inv_cell_size = 1.0 / cell_size_m
@@ -211,15 +249,30 @@ class Go2LidarEnv(DirectRLEnv):
         height_map = torch.full((num_envs * num_cells,), -torch.inf, device=self.device)
         height_map.scatter_reduce_(0, flat_idx, z_vals, reduce="amax", include_self=True)
         height_map = torch.where(torch.isfinite(height_map), -height_map, torch.zeros_like(height_map))
-        height_map = height_map.reshape(num_envs, num_cells)
-
+        height_map = height_map.reshape(num_envs, num_cells).flip(dims=[1]) - 0.28
+        if randomize:
+            height_map = self._apply_offset(height_map)
+            height_map += (2.0 * torch.rand_like(height_map) - 1.0) * float(0.01)
+            height_map = self._zero_heightmap_cells(height_map)            
+            
         # Keep ordering consistent with lidar_debug flow.
-        return height_map.flip(dims=[1])
+        return height_map
     
-    def _process_heightmap(self, height_map):
-        sampled_indices = torch.multinomial(self.gaussian_prob_heightmap, self.cfg.n_zeros, replacement=True)
+
+    def _apply_offset(self, height_map):
+        if not hasattr(self, "_offsets"):
+            return height_map
+        offset_shape = (self._offsets.shape[0],) + (1,) * (height_map.ndim - 1)
+        return height_map + self._offsets.view(offset_shape)
+    
+    def _zero_heightmap_cells(self, height_map):
+        self.same_zeros_count += 1
+        if self.same_zeros_count == self.reset_zeros_freq:
+            self.reset_zeros_freq = int(torch.randint(1, self.cfg.max_reset_zeros_freq + 1, (1,), device=self.device).item())            
+            self.same_zeros_count = 0   
+            self.sampled_indices = torch.multinomial(self.gaussian_prob_heightmap, self.cfg.n_zeros, replacement=True)
         height_map_actor = height_map.clone()
-        height_map_actor[:, sampled_indices] = 0.0
+        height_map_actor[:, self.sampled_indices] = 0.0
         return height_map_actor
     
     def _get_observations(self) -> dict:
@@ -228,14 +281,18 @@ class Go2LidarEnv(DirectRLEnv):
         x_cells = max(1, int((float(self.cfg.x_range[1]) - float(self.cfg.x_range[0])) / float(self.cfg.res)))
         y_cells = max(1, int((float(self.cfg.y_range[1]) - float(self.cfg.y_range[0])) / float(self.cfg.res)))
 
-        height_data = self._compute_height_data_from_cloud() - 0.28
-        height_data_actor = height_data + (2.0 * torch.rand_like(height_data) - 1.0) * float(0.01) * self.cfg.randomize
-        height_data_actor = self._process_heightmap(height_data_actor)
+        height_data = self._compute_height_data_from_cloud(randomize=False)
+        height_data_actor = self._compute_height_data_from_cloud(randomize=self.cfg.randomize)
         height_data = self._sanitize_tensor(height_data, "height_data", clamp_abs=10.0)
         height_data_actor = self._sanitize_tensor(height_data_actor, "height_data_actor", clamp_abs=10.0)
         height_data = height_data.view(self.num_envs, x_cells, y_cells).unsqueeze(1)
         height_data_actor = height_data_actor.view(self.num_envs, x_cells, y_cells).unsqueeze(1)
-    
+        # torch.set_printoptions(precision=2, linewidth=1000, sci_mode=False)
+        # print(self._rots)
+        # print(self._offsets)
+        # print(self.reset_zeros_freq)
+        # print("Height Data Sample (Actor): ", height_data_actor)
+        
 
         # Actor (student) proprio observations — limited/noisy proprio inputs used by policy.
         actor_proprio = torch.cat(
@@ -354,23 +411,30 @@ class Go2LidarEnv(DirectRLEnv):
         return died, time_out
 
     def _reset_idx(self, env_ids: torch.Tensor | None):
-        if env_ids is None or len(env_ids) == self.num_envs:
-            env_ids = self._robot._ALL_INDICES
-        self.curriculum_manager.compute(env_ids=env_ids)
-        self._robot.reset(env_ids)
-        super()._reset_idx(env_ids)
-        if len(env_ids) == self.num_envs:
+        reset_env_ids: torch.Tensor = self._robot._ALL_INDICES if env_ids is None else env_ids
+        if reset_env_ids.numel() == self.num_envs:
+            reset_env_ids = self._robot._ALL_INDICES
+        self.curriculum_manager.compute(env_ids=reset_env_ids)
+        self._robot.reset(reset_env_ids)
+        super()._reset_idx(reset_env_ids)
+        if reset_env_ids.numel() == self.num_envs:
             # Spread out the resets to avoid spikes in training when many environments reset at a similar time
             self.episode_length_buf[:] = torch.randint_like(self.episode_length_buf, high=int(self.max_episode_length))
-        self._actions[env_ids] = 0.0
-        self._previous_actions[env_ids] = 0.0
+        self._actions[reset_env_ids] = 0.0
+        self._previous_actions[reset_env_ids] = 0.0
         # Sample new commands
-        self.command_manager.reset(env_ids)
+        self.command_manager.reset(reset_env_ids)
+        if hasattr(self, "_rots"):
+            num_resets = reset_env_ids.numel()
+            self._rots[reset_env_ids] = torch.empty(num_resets, device=self.device).uniform_(-self.cfg.max_rot, self.cfg.max_rot)
+            self._offsets[reset_env_ids] = torch.empty(num_resets, device=self.device).uniform_(
+                -self.cfg.max_offset, self.cfg.max_offset
+            )
         # Reset robot state
-        joint_pos = self._robot.data.default_joint_pos[env_ids]
-        joint_vel = self._robot.data.default_joint_vel[env_ids]
-        default_root_state = self._robot.data.default_root_state[env_ids]
-        default_root_state[:, :3] += self._terrain.env_origins[env_ids]
+        joint_pos = self._robot.data.default_joint_pos[reset_env_ids]
+        joint_vel = self._robot.data.default_joint_vel[reset_env_ids]
+        default_root_state = self._robot.data.default_root_state[reset_env_ids]
+        default_root_state[:, :3] += self._terrain.env_origins[reset_env_ids]
         # Add x-axis offset to spawn position
         # default_root_state[:, 0] += 0.5  # Offset in meters (change this value as needed)
         # # Rotate 45 degrees around z-axis at spawn
@@ -382,18 +446,18 @@ class Go2LidarEnv(DirectRLEnv):
         # ).expand(len(env_ids), -1)
         # default_root_state[:, 3:7] = quat_mul(z_rot_quat, default_root_state[:, 3:7])
 
-        self._robot.write_root_pose_to_sim(default_root_state[:, :7], env_ids)
-        self._robot.write_root_velocity_to_sim(default_root_state[:, 7:], env_ids)
-        self._robot.write_joint_state_to_sim(joint_pos, joint_vel, None, env_ids)
+        self._robot.write_root_pose_to_sim(default_root_state[:, :7], reset_env_ids)
+        self._robot.write_root_velocity_to_sim(default_root_state[:, 7:], reset_env_ids)
+        self._robot.write_joint_state_to_sim(joint_pos, joint_vel, None, reset_env_ids)
         # Logging
         extras = dict()
         for key in self._episode_sums.keys():
-            episodic_sum_avg = torch.mean(self._episode_sums[key][env_ids])
+            episodic_sum_avg = torch.mean(self._episode_sums[key][reset_env_ids])
             extras["Episode_Reward/" + key] = episodic_sum_avg / self.max_episode_length_s
-            self._episode_sums[key][env_ids] = 0.0
+            self._episode_sums[key][reset_env_ids] = 0.0
         self.extras["log"] = dict()
         self.extras["log"].update(extras)
         extras = dict()
-        extras["Episode_Termination/base_contact"] = torch.count_nonzero(self.reset_terminated[env_ids]).item()
-        extras["Episode_Termination/time_out"] = torch.count_nonzero(self.reset_time_outs[env_ids]).item()
+        extras["Episode_Termination/base_contact"] = torch.count_nonzero(self.reset_terminated[reset_env_ids]).item()
+        extras["Episode_Termination/time_out"] = torch.count_nonzero(self.reset_time_outs[reset_env_ids]).item()
         self.extras["log"].update(extras)
