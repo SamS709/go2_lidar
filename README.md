@@ -42,6 +42,48 @@ The goal of this repo is to add the lidar of the go2 as a perception module so t
     python -m pip install -e source/go2_lidar
     ```
 
+## Docker
+
+All Docker files live in [docker/](docker). Use the scripts from there:
+
+```bash
+cd docker
+./build.sh
+./run.sh
+```
+
+`build.sh` builds the project image from `nvidia/cuda:12.9.2-cudnn-devel-ubuntu22.04`. `run.sh` starts the already-built container and drops you into a bash shell inside it without rebuilding.
+
+If `https://github.com/SamS709/cloud_logs_isaaclab.git` is private or otherwise requires auth, export `CLOUD_LOGS_GITHUB_TOKEN` before building:
+
+```bash
+cd docker
+./build.sh
+```
+
+The token is only used during the image build to fetch the logs repo.
+
+The container is configured to:
+
+- use `nvidia/cuda:12.9.2-cudnn-devel-ubuntu22.04` as the base image,
+- install `python3.11`, `pip`, `cmake`, and `build-essential`,
+- install `isaacsim[all,extscache]==5.1.0`,
+- install `torch==2.7.0` and `torchvision==0.22.0` from the CUDA 12.8 wheels index,
+- clone Isaac Lab into `/workspace/isaaclab_classic` and run `./isaaclab.sh --install rsl_rl`,
+- copy this repository to `/workspace/go2_lidar`,
+- install `source/go2_lidar` in editable mode,
+- clone `https://github.com/SamS709/cloud_logs_isaaclab.git` into `logs/rsl_rl`,
+- reuse Isaac Sim cache volumes from the standard run command.
+
+If you prefer a plain Docker command instead of the script, the interactive no-build equivalent is:
+
+```bash
+cd docker
+docker compose up -d --no-build --remove-orphans && docker compose exec go2_lidar bash
+```
+
+That only works after `./build.sh` has been run at least once.
+
 ## 1) Training
 
 To see how the lidar observations are computed, go to [lidar_info.md](lidar_info.md).

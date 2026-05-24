@@ -33,8 +33,8 @@ from isaaclab_rl.rsl_rl import (
     RslRlPpoActorCriticCfg,
     RslRlPpoAlgorithmCfg,
     RslRlRNNModelCfg,
-    RslRlCNNModelCfg,
 )
+from isaaclab_rl.rsl_rl.rl_cfg import RslRlCNNModelCfg
 
 
 @configclass

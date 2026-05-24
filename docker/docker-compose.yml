@@ -1,0 +1,25 @@
+services:
+  go2_lidar:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    image: go2_lidar:isaacsim-5.1.0
+    container_name: isaac-lab-go2_lidar
+    entrypoint: ["bash"]
+    stdin_open: true
+    tty: true
+    network_mode: host
+    gpus: all
+    environment:
+      ACCEPT_EULA: "Y"
+      PRIVACY_CONSENT: "Y"
+    working_dir: /workspace/go2_lidar
+    volumes:
+      - ${HOME}/docker/isaac-sim/cache/kit:/isaac-sim/kit/cache:rw
+      - ${HOME}/docker/isaac-sim/cache/ov:/root/.cache/ov:rw
+      - ${HOME}/docker/isaac-sim/cache/pip:/root/.cache/pip:rw
+      - ${HOME}/docker/isaac-sim/cache/glcache:/root/.cache/nvidia/GLCache:rw
+      - ${HOME}/docker/isaac-sim/cache/computecache:/root/.nv/ComputeCache:rw
+      - ${HOME}/docker/isaac-sim/logs:/root/.nvidia-omniverse/logs:rw
+      - ${HOME}/docker/isaac-sim/data:/root/.local/share/ov/data:rw
+      - ${HOME}/docker/isaac-sim/documents:/root/Documents:rw

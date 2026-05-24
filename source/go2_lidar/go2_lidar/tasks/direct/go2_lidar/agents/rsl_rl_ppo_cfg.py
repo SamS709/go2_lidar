@@ -6,12 +6,12 @@
 from isaaclab.utils import configclass
 
 from isaaclab_rl.rsl_rl import (
-    RslRlCNNModelCfg,
     RslRlOnPolicyRunnerCfg,
     RslRlPpoActorCriticRecurrentCfg,
     RslRlPpoActorCriticCfg,
     RslRlPpoAlgorithmCfg,
 )
+from isaaclab_rl.rsl_rl.rl_cfg import RslRlCNNModelCfg
 
 
 @configclass
