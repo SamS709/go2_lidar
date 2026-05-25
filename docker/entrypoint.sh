@@ -16,7 +16,4 @@ if [[ $# -gt 0 ]]; then
 fi
 
 # Default: headless training
-exec python /workspace/go2_lidar/scripts/rsl_rl/train.py \
-    --task Isaac-Velocity-Rough-Go2-Lidar-Direct-v0 \
-    --headless \
-    --num_envs 4096
+exec sleep infinity
