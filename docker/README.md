@@ -16,10 +16,21 @@ This now builds two images:
 - `go2_lidar:isaacsim-base-5.1.0` for the heavy Isaac Sim and Isaac Lab layers,
 - `go2_lidar:isaacsim-5.1.0` for the project-specific layers.
 
+The app image clones `https://github.com/SamS709/go2_lidar.git` into `/workspace/go2_lidar` during build (it no longer uses `COPY . /workspace/go2_lidar`).
+
 If the cloud logs repository needs authentication, export the token before building:
 
 ```bash
 export CLOUD_LOGS_GITHUB_TOKEN="<your-token>"
+cd docker
+./build.sh
+```
+
+To build from a different branch, tag, commit, or fork:
+
+```bash
+export GO2_LIDAR_REPO="https://github.com/SamS709/go2_lidar.git"
+export GO2_LIDAR_REF="main"
 cd docker
 ./build.sh
 ```
@@ -29,7 +40,7 @@ If you want to build manually instead of using the script, the equivalent comman
 ```bash
 cd docker
 docker build -f Dockerfile.base -t go2_lidar:isaacsim-base-5.1.0 ..
-docker build -f Dockerfile -t go2_lidar:isaacsim-5.1.0 --build-arg BASE_IMAGE=go2_lidar:isaacsim-base-5.1.0 ..
+docker build -f Dockerfile -t go2_lidar:isaacsim-5.1.0 --build-arg BASE_IMAGE=go2_lidar:isaacsim-base-5.1.0 --build-arg GO2_LIDAR_REPO=https://github.com/SamS709/go2_lidar.git --build-arg GO2_LIDAR_REF=main ..
 ```
 
 ## Run locally

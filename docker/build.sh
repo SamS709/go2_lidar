@@ -9,6 +9,12 @@ build_args=()
 if [[ -n "${CLOUD_LOGS_GITHUB_TOKEN:-}" ]]; then
 	build_args+=(--build-arg "CLOUD_LOGS_GITHUB_TOKEN=${CLOUD_LOGS_GITHUB_TOKEN}")
 fi
+if [[ -n "${GO2_LIDAR_REPO:-}" ]]; then
+	build_args+=(--build-arg "GO2_LIDAR_REPO=${GO2_LIDAR_REPO}")
+fi
+if [[ -n "${GO2_LIDAR_REF:-}" ]]; then
+	build_args+=(--build-arg "GO2_LIDAR_REF=${GO2_LIDAR_REF}")
+fi
 
 base_image="go2_lidar:isaacsim-base-5.1.0"
 app_image="go2_lidar:isaacsim-5.1.0"

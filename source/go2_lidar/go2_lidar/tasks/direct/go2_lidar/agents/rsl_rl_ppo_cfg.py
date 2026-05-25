@@ -7,11 +7,9 @@ from isaaclab.utils import configclass
 
 from isaaclab_rl.rsl_rl import (
     RslRlOnPolicyRunnerCfg,
-    RslRlPpoActorCriticRecurrentCfg,
-    RslRlPpoActorCriticCfg,
     RslRlPpoAlgorithmCfg,
 )
-from isaaclab_rl.rsl_rl.rl_cfg import RslRlCNNModelCfg
+from isaaclab_rl.rsl_rl.rl_cfg import RslRlCNNModelCfg, RslRlMLPModelCfg, RslRlRNNModelCfg
 
 
 @configclass
@@ -73,11 +71,11 @@ class Go2LidarFlatPPORunnerCfg(RslRlOnPolicyRunnerCfg):
 
 
 @configclass
-class Go2LidarRoughPPORunnerCfg(RslRlOnPolicyRunnerCfg):
+class Go2LidarRoughCNNPPORunnerCfg(RslRlOnPolicyRunnerCfg):
     num_steps_per_env = 24
     max_iterations = 50000
     save_interval = 50
-    experiment_name = "go2_lidar"
+    experiment_name = "go2_lidar_cnn"
     obs_groups = {
         "actor": ["actor_proprio", "actor_grid"],
         "critic": ["critic_proprio", "critic_grid"],
@@ -94,7 +92,7 @@ class Go2LidarRoughPPORunnerCfg(RslRlOnPolicyRunnerCfg):
             max_pool=False,
             global_pool="none",         
         ),
-        distribution_cfg=RslRlCNNModelCfg.GaussianDistributionCfg(
+        distribution_cfg=RslRlMLPModelCfg.GaussianDistributionCfg(
             init_std=0.8, std_type="log"
         ),
     )
@@ -112,6 +110,91 @@ class Go2LidarRoughPPORunnerCfg(RslRlOnPolicyRunnerCfg):
             global_pool="none",
         ),
     )
+    algorithm = RslRlPpoAlgorithmCfg(
+        value_loss_coef=1.0,
+        use_clipped_value_loss=True,
+        clip_param=0.2,
+        entropy_coef=0.01,
+        num_learning_epochs=5,
+        num_mini_batches=8,
+        learning_rate=3e-4,
+        schedule="adaptive",
+        gamma=0.99,
+        lam=0.95,
+        desired_kl=0.01,
+        max_grad_norm=1.0,
+    )
+    
+@configclass
+class Go2LidarRoughRNNPPORunnerCfg(RslRlOnPolicyRunnerCfg):
+    num_steps_per_env = 24
+    max_iterations = 50000
+    save_interval = 50
+    experiment_name = "go2_lidar_rnn"
+
+    obs_groups = {
+        "actor":  ["actor_proprio", "actor_grid"],
+        "critic": ["critic_proprio", "critic_grid"],
+    }
+    actor = RslRlRNNModelCfg(
+        hidden_dims=[512, 256, 128],
+        activation="elu",
+        obs_normalization=False,
+        distribution_cfg=RslRlMLPModelCfg.GaussianDistributionCfg(init_std=0.8, std_type="log"),
+        rnn_type="lstm",
+        rnn_hidden_dim=256,
+        rnn_num_layers=1,
+    )
+    critic = RslRlRNNModelCfg(
+        hidden_dims=[512, 256, 128],
+        activation="elu",
+        obs_normalization=False,
+        rnn_type="lstm",
+        rnn_hidden_dim=256,
+        rnn_num_layers=1,
+    )
+
+  
+
+    algorithm = RslRlPpoAlgorithmCfg(
+        value_loss_coef=1.0,
+        use_clipped_value_loss=True,
+        clip_param=0.2,
+        entropy_coef=0.01,
+        num_learning_epochs=5,
+        num_mini_batches=8,
+        learning_rate=3e-4,
+        schedule="adaptive",
+        gamma=0.99,
+        lam=0.95,
+        desired_kl=0.01,
+        max_grad_norm=1.0,
+    )
+@configclass
+class Go2LidarRoughMLPPPORunnerCfg(RslRlOnPolicyRunnerCfg):
+    num_steps_per_env = 24
+    max_iterations = 50000
+    save_interval = 50
+    experiment_name = "go2_lidar_mlp"
+
+    obs_groups = {
+        "actor":  ["actor_proprio", "actor_grid"],
+        "critic": ["critic_proprio", "critic_grid"],
+    }
+
+    actor = RslRlMLPModelCfg(
+        hidden_dims=[512, 256, 128],
+        activation="elu",
+        distribution_cfg=RslRlMLPModelCfg.GaussianDistributionCfg(init_std=0.8, std_type="log"),        
+        obs_normalization=True,
+        init_noise_std=1.0,
+    )
+    critic = RslRlMLPModelCfg(
+        hidden_dims=[512, 256, 128],
+        activation="elu",
+        obs_normalization=True,
+    )
+
     algorithm = RslRlPpoAlgorithmCfg(
         value_loss_coef=1.0,
         use_clipped_value_loss=True,
