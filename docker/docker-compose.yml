@@ -5,14 +5,21 @@ services:
       dockerfile: docker/Dockerfile
     image: go2_lidar:isaacsim-5.1.0
     container_name: isaac-lab-go2_lidar
-    entrypoint: ["bash"]
+    entrypoint: ["/entrypoint.sh", "bash"]   # ← pass bash as arg for local interactive
     stdin_open: true
     tty: true
     network_mode: host
-    gpus: all
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
     environment:
       ACCEPT_EULA: "Y"
       PRIVACY_CONSENT: "Y"
+      OMNI_KIT_ACCEPT_EULA: "yes"
     working_dir: /workspace/go2_lidar
     volumes:
       - ${HOME}/docker/isaac-sim/cache/kit:/isaac-sim/kit/cache:rw

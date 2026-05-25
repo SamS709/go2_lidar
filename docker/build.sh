@@ -10,4 +10,18 @@ if [[ -n "${CLOUD_LOGS_GITHUB_TOKEN:-}" ]]; then
 	build_args+=(--build-arg "CLOUD_LOGS_GITHUB_TOKEN=${CLOUD_LOGS_GITHUB_TOKEN}")
 fi
 
-docker compose -f docker-compose.yml build --pull "${build_args[@]}"
+base_image="go2_lidar:isaacsim-base-5.1.0"
+app_image="go2_lidar:isaacsim-5.1.0"
+
+docker build \
+	-f Dockerfile.base \
+	-t "$base_image" \
+	"${build_args[@]}" \
+	..
+
+docker build \
+	-f Dockerfile \
+	-t "$app_image" \
+	--build-arg "BASE_IMAGE=${base_image}" \
+	"${build_args[@]}" \
+	..

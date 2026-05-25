@@ -1,55 +1,7 @@
-FROM nvidia/cuda:12.9.2-cudnn-devel-ubuntu22.04
-
+ARG BASE_IMAGE=go2_lidar:isaacsim-base-5.1.0
+FROM ${BASE_IMAGE}
 SHELL ["/bin/bash", "-lc"]
-
 ARG CLOUD_LOGS_GITHUB_TOKEN=""
-
-ENV DEBIAN_FRONTEND=noninteractive
-ENV TERM=xterm
-ENV ACCEPT_EULA=Y
-ENV OMNI_KIT_ACCEPT_EULA=yes
-ENV PRIVACY_CONSENT=Y
-
-WORKDIR /workspace
-
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends \
-        build-essential \
-        ca-certificates \
-        cmake \
-        ncurses-term \
-        curl \
-        git \
-        openssh-client \
-        software-properties-common \
-    && add-apt-repository -y ppa:deadsnakes/ppa \
-    && apt-get update \
-    && apt-get install -y --no-install-recommends \
-        python3.11 \
-        python3.11-distutils \
-        python3.11-venv \
-    && curl -sS https://bootstrap.pypa.io/get-pip.py -o /tmp/get-pip.py \
-    && python3.11 /tmp/get-pip.py \
-    && ln -sf /usr/bin/python3.11 /usr/local/bin/python \
-    && ln -sf /usr/local/bin/pip3.11 /usr/local/bin/pip \
-    && rm -f /tmp/get-pip.py \
-    && rm -rf /var/lib/apt/lists/*
-
-RUN pip install --upgrade pip
-
-RUN pip install "isaacsim[all,extscache]==5.1.0" --extra-index-url https://pypi.nvidia.com
-
-RUN pip install -U torch==2.7.0 torchvision==0.22.0 --index-url https://download.pytorch.org/whl/cu128
-
-RUN cd /workspace \
-    && git clone https://github.com/isaac-sim/IsaacLab.git isaaclab_classic
-
-RUN cd /workspace/isaaclab_classic \
-    && python -m pip install toml \
-    && ./isaaclab.sh -p tools/install_deps.py apt source || true
-
-RUN cd /workspace/isaaclab_classic \
-    && ./isaaclab.sh --install rsl_rl
 
 COPY . /workspace/go2_lidar
 
@@ -61,6 +13,12 @@ RUN cd /workspace/go2_lidar \
     && cd logs/rsl_rl \
     && if [[ -n "${CLOUD_LOGS_GITHUB_TOKEN}" ]]; then \
         git clone "https://x-access-token:${CLOUD_LOGS_GITHUB_TOKEN}@github.com/SamS709/cloud_logs_isaaclab.git" .; \
-       else \
+    else \
         git clone https://github.com/SamS709/cloud_logs_isaaclab.git .; \
-       fi
+    fi
+
+WORKDIR /workspace/go2_lidar
+
+# ← These two lines are what RunPod needs
+COPY docker/entrypoint.sh /entrypoint.sh
+ENTRYPOINT ["/entrypoint.sh"]
