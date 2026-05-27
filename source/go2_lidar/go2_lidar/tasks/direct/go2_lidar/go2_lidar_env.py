@@ -64,6 +64,11 @@ class Go2LidarEnv(DirectRLEnv):
         self._undesired_contact_body_ids = self._thigh_ids
         self._body_contact_info_teacher = self._thigh_ids + self._calf_ids
         self._finite_warn_counter = 0
+        print("FEET iDS: ", self._feet_ids)
+        print("RL ID: ", self._contact_sensor.find_bodies("RL_foot"))
+        print("FL ID: ", self._contact_sensor.find_bodies("FL_foot"))
+        print("RR ID: ", self._contact_sensor.find_bodies("RR_foot"))
+        print("FR ID: ", self._contact_sensor.find_bodies("FR_foot"))
         print("UNDESIRED CONTACTS: Thighs and Calfs")
         print("IDS: ", self._undesired_contact_body_ids)
 
@@ -347,19 +352,47 @@ class Go2LidarEnv(DirectRLEnv):
             torch.norm(self.command_manager.get_command("base_velocity")[:, :2], dim=1) > 0.1
         )
         
-        # undesired contacts
+        # useful for next two rewards:
         net_contact_forces = self._contact_sensor.data.net_forces_w_history
+        cmd = torch.linalg.norm(self.command_manager.get_command("base_velocity"), dim=1)
+        body_vel = torch.linalg.norm(self._robot.data.root_lin_vel_b[:, :2], dim=1)
+        is_moving = torch.logical_or(cmd > 0.0, body_vel > self.cfg.velocity_threshold)
+
+        # gait trot
+        foot_contact = torch.norm(self._contact_sensor.data.net_forces_w[:, self._feet_ids], dim=-1) > 1.0
+        # FEET iDS:  [4, 8, 14, 18]
+        # RL ID:  ([14], ['RL_foot'])
+        # FL ID:  ([4], ['FL_foot'])
+        # RR ID:  ([18], ['RR_foot'])
+        # FR ID:  ([8], ['FR_foot'])
+        # Pair A in air: FL(0) and RR(3) off ground simultaneously
+        pair_A_air = (~foot_contact[:, 0]) & (~foot_contact[:, 3])  # [N]
+        # Pair B in air: FR(1) and RL(2) off ground simultaneously
+        pair_B_air = (~foot_contact[:, 1]) & (~foot_contact[:, 2])  # [N]
+        # reward when either valid diagonal pair is fully airborne
+        trot_pattern = (pair_A_air | pair_B_air).float()             # [N]
+        # --- penalise anti-trot: wrong pairs in air simultaneously ---
+        # e.g. FL+FR both up (bound) or FL+RL both up (pace) — not trot
+        wrong_pair = (
+            ((~foot_contact[:, 0]) & (~foot_contact[:, 1])) |  # FL+FR = bound front
+            ((~foot_contact[:, 2]) & (~foot_contact[:, 3])) |  # RL+RR = bound rear
+            ((~foot_contact[:, 0]) & (~foot_contact[:, 2])) |  # FL+RL = pace left
+            ((~foot_contact[:, 1]) & (~foot_contact[:, 3]))    # FR+RR = pace right
+        ).float()
+        # --- only reward when actually moving ---
+        gait = (trot_pattern - 0.5 * wrong_pair ).clamp(min=0.0) * is_moving      
+
+        # undesired contacts
         is_contact = (
             torch.max(torch.norm(net_contact_forces[:, :, self._undesired_contact_body_ids], dim=-1), dim=1)[0] > 1.0
         )
         contacts = torch.sum(is_contact, dim=1)
+        
         # flat orientation
         flat_orientation = torch.sum(torch.square(self._robot.data.projected_gravity_b[:, :2]), dim=1)
+        
         # stay around default pos:        
-        cmd = torch.linalg.norm(self.command_manager.get_command("base_velocity"), dim=1)
-        body_vel = torch.linalg.norm(self._robot.data.root_lin_vel_b[:, :2], dim=1)
         joint_deviation = torch.sum(torch.square(self._robot.data.joint_pos - self._robot.data.default_joint_pos), dim=1)
-        is_moving = torch.logical_or(cmd > 0.0, body_vel > self.cfg.velocity_threshold)
         def_pos = torch.where(is_moving, joint_deviation, self.cfg.stand_still_scale * joint_deviation)
         
         rewards = {
@@ -371,6 +404,7 @@ class Go2LidarEnv(DirectRLEnv):
             "dof_acc_l2": joint_accel * self.cfg.joint_accel_reward_scale * self.step_dt,
             "action_rate_l2": action_rate * self.cfg.action_rate_reward_scale * self.step_dt,
             "feet_air_time": air_time * self.cfg.feet_air_time_reward_scale * self.step_dt,
+            "feet_gait": gait * self.cfg.feet_air_time_reward_scale / 2.0 * self.step_dt,
             "undesired_contacts": contacts * self.cfg.undesired_contact_reward_scale * self.step_dt,
             "flat_orientation_l2": flat_orientation * self.cfg.flat_orientation_reward_scale * self.step_dt,
             "def_pos" : def_pos * self.cfg.def_pos_reward_scale * self.step_dt
