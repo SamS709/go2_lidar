@@ -51,6 +51,7 @@ class Go2LidarEnv(DirectRLEnv):
                 "dof_acc_l2",
                 "action_rate_l2",
                 "feet_air_time",
+                "feet_gait",
                 "undesired_contacts",
                 "flat_orientation_l2",
                 "def_pos"
