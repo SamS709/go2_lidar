@@ -194,11 +194,12 @@ class Go2LidarFlatEnvCfg(DirectRLEnvCfg):
     joint_torque_reward_scale = -2.0e-4
     joint_accel_reward_scale = -2.5e-7
     action_rate_reward_scale = -0.01
+    gait_reward_scale = 0.0
     feet_air_time_reward_scale = 0.01
     undesired_contact_reward_scale = -0.00
     flat_orientation_reward_scale = 0.0
     velocity_threshold = 0.1
-    def_pos_reward_scale = -0.005
+    def_pos_reward_scale = -0.00
     stand_still_scale = 10.0
 
 

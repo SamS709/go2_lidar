@@ -404,7 +404,7 @@ class Go2LidarEnv(DirectRLEnv):
             "dof_acc_l2": joint_accel * self.cfg.joint_accel_reward_scale * self.step_dt,
             "action_rate_l2": action_rate * self.cfg.action_rate_reward_scale * self.step_dt,
             "feet_air_time": air_time * self.cfg.feet_air_time_reward_scale * self.step_dt,
-            "feet_gait": gait * self.cfg.feet_air_time_reward_scale / 2.0 * self.step_dt,
+            "feet_gait": gait * self.cfg.gait_reward_scale * self.step_dt,
             "undesired_contacts": contacts * self.cfg.undesired_contact_reward_scale * self.step_dt,
             "flat_orientation_l2": flat_orientation * self.cfg.flat_orientation_reward_scale * self.step_dt,
             "def_pos" : def_pos * self.cfg.def_pos_reward_scale * self.step_dt
