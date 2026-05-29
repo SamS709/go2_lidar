@@ -7,6 +7,18 @@
 
 """Launch Isaac Sim Simulator first."""
 
+
+
+"""
+
+cd /mnt/D/dev/robotics/nvidia/isaaclab/go2_lidar
+python scripts/rsl_rl/play.py \
+  --task Isaac-Velocity-Rough-Go2-CNN-Lidar-Direct-v0 \
+  --num_envs 512 \
+  --checkpoint /mnt/D/dev/robotics/nvidia/isaaclab/logs/go2_lidar_cnn/2026-05-27_11-10-58/model_9950.pt
+"""
+
+
 import argparse
 import sys
 
