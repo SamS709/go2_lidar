@@ -185,22 +185,32 @@ class Go2LidarFlatEnvCfg(DirectRLEnvCfg):
     )
 
     randomize = True
+    
+    desired_clip_actions = 3.0
 
     # reward scales
     lin_vel_reward_scale = 1.5
     yaw_rate_reward_scale = 0.5
     z_vel_reward_scale = -0.5
     ang_vel_reward_scale = -0.05
-    joint_torque_reward_scale = -2.0e-4
+    joint_torque_reward_scale = -2.0e-6
     joint_accel_reward_scale = -2.5e-7
+    joint_energy_reward_scale = -1e-4
     action_rate_reward_scale = -0.01
+    action_rate_2_reward_scale = -0.001
     gait_reward_scale = -0.005
     feet_air_time_reward_scale = 0.01
-    undesired_contact_reward_scale = 0.0
+    undesired_contact_reward_scale = -1.0
     flat_orientation_reward_scale = 0.0
-    velocity_threshold = 0.2
+    velocity_threshold = 0.3
     def_pos_reward_scale = -0.005
     stand_still_scale = 10.0
+    
+    # feet distance
+    feet_dist_reward_scale = 0.05
+    feet_dist_threshold = 0.2 
+    
+
 
 
 @configclass
