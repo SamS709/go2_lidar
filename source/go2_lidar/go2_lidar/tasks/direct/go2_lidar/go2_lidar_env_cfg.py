@@ -66,9 +66,9 @@ class EventCfg:
         mode="startup",
         params={
             "asset_cfg": SceneEntityCfg("robot", body_names=".*"),
-            "static_friction_range": (0.3, 1.2),
-            "dynamic_friction_range": (0.3, 1.2),
-            "restitution_range": (0.0, 0.15),
+            "static_friction_range": (0.2, 1.25),
+            "dynamic_friction_range": (0.2, 1.25),
+            "restitution_range": (0.0, 0.1),
             "num_buckets": 64,
         },
     )
@@ -78,7 +78,7 @@ class EventCfg:
         mode="startup",
         params={
             "asset_cfg": SceneEntityCfg("robot", body_names="base"),
-            "mass_distribution_params": (-1.0, 3.0),
+            "mass_distribution_params": (-5.0, 5.0),
             "operation": "add",
         },
     )
@@ -88,7 +88,17 @@ class EventCfg:
         mode="startup",
         params={
             "asset_cfg": SceneEntityCfg("robot", body_names="base"),
-            "com_range": {"x": (-0.05, 0.05), "y": (-0.05, 0.05), "z": (-0.01, 0.01)},
+            "com_range": {"x": (-0.02, 0.02), "y": (-0.02, 0.02), "z": (-0.02, 0.02)},
+        },
+    )
+    
+    base_external_force_torque = EventTerm(
+        func=mdp.apply_external_force_torque,
+        mode="reset",
+        params={
+            "asset_cfg": SceneEntityCfg("robot", body_names="base"),
+            "force_range": (-5.0, 5.0),
+            "torque_range": (-5.0, 5.0),
         },
     )
 
@@ -107,6 +117,16 @@ class EventCfg:
             },
         },
     )
+    randomize_joint_parameters = EventTerm(
+        func=mdp.randomize_joint_parameters,
+        mode="reset",
+        params={
+            "asset_cfg": SceneEntityCfg("robot", joint_names=[".*"]), 
+            "friction_distribution_params": (0.8, 1.2),
+            "operation": "scale",
+            "distribution": "uniform",
+        },
+    )
 
     reset_robot_joints = EventTerm(
         func=mdp.reset_joints_by_scale,
@@ -116,14 +136,29 @@ class EventCfg:
             "velocity_range": (-1.0, 1.0),
         },
     )
+    
+    actuator_gains = EventTerm(
+    func=mdp.randomize_actuator_gains,
+    mode="reset",
+    params={
+        "asset_cfg": SceneEntityCfg("robot", joint_names=".*"),
+        "stiffness_distribution_params": (-2.0, 2.0),
+        "damping_distribution_params": (-0.5, 0.5),
+        "operation": "add",
+        "distribution": "uniform",
+    },
+    )
 
     # interval
     push_robot = EventTerm(
         func=mdp.push_by_setting_velocity,
         mode="interval",
-        interval_range_s=(5.0, 10.0),
-        params={"velocity_range": {"x": (-0.5, 0.5), "y": (-0.5, 0.5)}},
+        interval_range_s=(10.0, 15.0),
+        params={"velocity_range": {"x": (-0.5, 0.5), "y": (-0.5, 0.5), "z": (-0.5, 0.5),
+                                   "roll": (-0.5, 0.5), "pitch": (-0.5, 0.5), "yaw": (-0.5, 0.5)}},
     )
+    
+    
 
 
 @configclass
@@ -187,6 +222,7 @@ class Go2LidarFlatEnvCfg(DirectRLEnvCfg):
     randomize = True
     
     desired_clip_actions = 3.0
+    filter_actions = True
 
     # reward scales
     lin_vel_reward_scale = 1.5
@@ -202,9 +238,9 @@ class Go2LidarFlatEnvCfg(DirectRLEnvCfg):
     feet_air_time_reward_scale = 0.01
     undesired_contact_reward_scale = -1.0
     flat_orientation_reward_scale = 0.0
-    velocity_threshold = 0.3
+    velocity_threshold = 0.01
     def_pos_reward_scale = -0.005
-    stand_still_scale = 10.0
+    stand_still_scale = 100.0
     
     # feet distance
     feet_dist_reward_scale = 0.05
@@ -251,8 +287,8 @@ class Go2LidarRoughEnvCfg(Go2LidarFlatEnvCfg):
             # )
         },
     )
-    ROUGH_TERRAINS_CFG.num_cols = 5
-    ROUGH_TERRAINS_CFG.num_rows = 5
+    # ROUGH_TERRAINS_CFG.num_cols = 5
+    # ROUGH_TERRAINS_CFG.num_rows = 5
     # ROUGH_TERRAINS_CFG.sub_terrains["pyramid_stairs_inv"].step_height_range = (0.1, 0.1)
     
     ROUGH_TERRAINS_CFG.sub_terrains["boxes"].grid_height_range = (0.025, 0.15)

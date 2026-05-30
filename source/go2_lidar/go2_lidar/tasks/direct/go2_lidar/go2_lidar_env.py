@@ -162,7 +162,7 @@ class Go2LidarEnv(DirectRLEnv):
         self._actions = actions.clone()
         self._actions = torch.clamp(self._actions, -self.cfg.desired_clip_actions, self.cfg.desired_clip_actions)
         
-        if(self.cfg.use_filter_actions):
+        if(self.cfg.filter_actions):
             alpha = 0.8
             temp = alpha * self._actions + (1 - alpha) * self._previous_actions
             self._processed_actions = self.cfg.action_scale * temp + self._robot.data.default_joint_pos
@@ -377,8 +377,7 @@ class Go2LidarEnv(DirectRLEnv):
         # useful for next two rewards:
         net_contact_forces = self._contact_sensor.data.net_forces_w_history
         cmd = torch.linalg.norm(self.command_manager.get_command("base_velocity"), dim=1)
-        body_vel = torch.linalg.norm(self._robot.data.root_lin_vel_b[:, :2], dim=1)
-        is_moving = torch.logical_or(cmd > 0.0, body_vel > self.cfg.velocity_threshold)
+        should_move = cmd > 0.01 
 
         # gait trot
         foot_contact = torch.norm(self._contact_sensor.data.net_forces_w[:, self._feet_ids], dim=-1) > 1.0
@@ -402,7 +401,7 @@ class Go2LidarEnv(DirectRLEnv):
             ((~foot_contact[:, 1]) & (~foot_contact[:, 3]))    # FR+RR = pace right
         ).float()
         # --- only reward when actually moving ---
-        gait = (trot_pattern - 0.5 * wrong_pair ).clamp(min=0.0) * is_moving      
+        gait = (trot_pattern - 0.5 * wrong_pair ).clamp(min=0.0) * should_move      
 
         # feet dist
         f_dist_squarred = torch.sum(torch.square(self._robot.data.body_pos_w[:,self._feet_ids[0],:2]-self._robot.data.body_pos_w[:,self._feet_ids[1],:2]), dim = 1)
@@ -421,7 +420,7 @@ class Go2LidarEnv(DirectRLEnv):
         
         # stay around default pos:        
         joint_deviation = torch.sum(torch.square(self._robot.data.joint_pos - self._robot.data.default_joint_pos), dim=1)
-        def_pos = torch.where(is_moving, joint_deviation, self.cfg.stand_still_scale * joint_deviation)
+        def_pos = torch.where(should_move, joint_deviation, self.cfg.stand_still_scale * joint_deviation)
         
         rewards = {
             "track_lin_vel_xy_exp": lin_vel_error_mapped * self.cfg.lin_vel_reward_scale * self.step_dt,
@@ -450,7 +449,9 @@ class Go2LidarEnv(DirectRLEnv):
     def _get_dones(self) -> tuple[torch.Tensor, torch.Tensor]:
         time_out = self.episode_length_buf >= self.max_episode_length - 1
         net_contact_forces = self._contact_sensor.data.net_forces_w_history
-        died = torch.any(torch.max(torch.norm(net_contact_forces[:, :, self._base_id], dim=-1), dim=1)[0] > 1.0, dim=1)
+        died_base = torch.any(torch.max(torch.norm(net_contact_forces[:, :, self._base_id], dim=-1), dim=1)[0] > 1.0, dim=1)
+        died_hips = torch.any(torch.max(torch.norm(net_contact_forces[:, :, self._hip_contact_sensor_ids], dim=-1), dim=1)[0] > 1.0, dim=1) 
+        died = torch.logical_or(died_base, died_hips)
         return died, time_out
 
     def _reset_idx(self, env_ids: torch.Tensor | None):
@@ -465,7 +466,7 @@ class Go2LidarEnv(DirectRLEnv):
             self.episode_length_buf[:] = torch.randint_like(self.episode_length_buf, high=int(self.max_episode_length))
         self._actions[reset_env_ids] = 0.0
         self._previous_actions[reset_env_ids] = 0.0
-        self._previous__previous_actions[reset_env_ids] = 0.0
+        self._previous_previous_actions[reset_env_ids] = 0.0
         # Sample new commands
         self.command_manager.reset(reset_env_ids)
         if hasattr(self, "_rots"):
