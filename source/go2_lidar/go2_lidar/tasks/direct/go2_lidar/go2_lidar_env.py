@@ -34,6 +34,9 @@ class Go2LidarEnv(DirectRLEnv):
         self._previous_actions = torch.zeros(
             self.num_envs, gym.spaces.flatdim(self.single_action_space), device=self.device
         )
+        self._previous_previous_actions = torch.zeros(
+            self.num_envs, gym.spaces.flatdim(self.single_action_space), device=self.device
+        )
 
         # X/Y linear velocity and yaw angular velocity commands
         self.command_manager = CommandManager(self.cfg.commands, self)
@@ -49,11 +52,14 @@ class Go2LidarEnv(DirectRLEnv):
                 "ang_vel_xy_l2",
                 "dof_torques_l2",
                 "dof_acc_l2",
-                "action_rate_l2",
-                "feet_air_time",
+                "dof_energy_l2",
+                "ction_rate_l2",
+                "action_rate_2_l2",
+                # "feet_air_time",
                 "feet_gait",
+                "feet_dist",
                 "undesired_contacts",
-                "flat_orientation_l2",
+                # "flat_orientation_l2",
                 "def_pos"
             ]
         }
@@ -61,9 +67,10 @@ class Go2LidarEnv(DirectRLEnv):
         self._base_id, _ = self._contact_sensor.find_bodies("base")
         self._feet_ids, _ = self._contact_sensor.find_bodies(".*_foot")
         self._thigh_ids, _ = self._contact_sensor.find_bodies(".*_thigh")
+        self._hip_ids, _ = self._contact_sensor.find_bodies(".*_hip")
         self._calf_ids, _ = self._contact_sensor.find_bodies(".*_calf")
         self._undesired_contact_body_ids = self._thigh_ids
-        self._body_contact_info_teacher = self._thigh_ids + self._calf_ids
+        self._body_contact_info_teacher = self._base_id + self._thigh_ids + self._calf_ids
         self._finite_warn_counter = 0
         print("FEET iDS: ", self._feet_ids)
         print("RL ID: ", self._contact_sensor.find_bodies("RL_foot"))
@@ -150,9 +157,18 @@ class Go2LidarEnv(DirectRLEnv):
 
     def _pre_physics_step(self, actions: torch.Tensor):
         self.command_manager.compute(dt=self.step_dt)
-        
+        self._previous_previous_actions = self._previous_actions.clone()
+        self._previous_actions = self._actions.clone()
         self._actions = actions.clone()
-        self._processed_actions = self.cfg.action_scale * self._actions + self._robot.data.default_joint_pos
+        self._actions = torch.clamp(self._actions, -self.cfg.desired_clip_actions, self.cfg.desired_clip_actions)
+        
+        if(self.cfg.use_filter_actions):
+            alpha = 0.8
+            temp = alpha * self._actions + (1 - alpha) * self._previous_actions
+            self._processed_actions = self.cfg.action_scale * temp + self._robot.data.default_joint_pos
+        else:
+            self._processed_actions = self.cfg.action_scale * self._actions + self._robot.data.default_joint_pos
+        
 
     def _apply_action(self):
         self._robot.set_joint_position_target(self._processed_actions)
@@ -296,6 +312,7 @@ class Go2LidarEnv(DirectRLEnv):
             self._robot.data.joint_pos - self._robot.data.default_joint_pos + noise(self._robot.data.default_joint_pos, 0.01),
             self._robot.data.joint_vel + noise(self._robot.data.joint_vel, 0.1),
             self._actions,
+            self._previous_actions,
         ], dim=-1)
         actor_proprio = self._sanitize_tensor(actor_proprio, "actor_proprio", clamp_abs=100.0)
 
@@ -314,13 +331,13 @@ class Go2LidarEnv(DirectRLEnv):
             self._robot.data.joint_vel,
             foot_contacts,
             self._actions,
+            self._previous_actions,
         ], dim=-1)
         
         critic_proprio = self._sanitize_tensor(critic_proprio, "critic_proprio", clamp_abs=100.0)
 
         critic_grid = self._sanitize_tensor(height_data, "critic_grid", clamp_abs=10.0)
-
-        self._previous_actions = self._actions.clone()
+       
 
         return {
             "actor_proprio": actor_proprio,
@@ -344,8 +361,12 @@ class Go2LidarEnv(DirectRLEnv):
         joint_torques = torch.sum(torch.square(self._robot.data.applied_torque), dim=1)
         # joint acceleration
         joint_accel = torch.sum(torch.square(self._robot.data.joint_acc), dim=1)
+        # joint energy
+        joint_energy = torch.sum(torch.abs(self._robot.data.applied_torque * self._robot.data.joint_vel), dim=1)
         # action rate
         action_rate = torch.sum(torch.square(self._actions - self._previous_actions), dim=1)
+        # action rate, order 2:
+        action_rate_2 = torch.sum(torch.square(self._actions - 2*self._previous_actions + self._previous_previous_actions), dim=1)        
         # feet air time
         first_contact = self._contact_sensor.compute_first_contact(self.step_dt)[:, self._feet_ids]
         last_air_time = self._contact_sensor.data.last_air_time[:, self._feet_ids]
@@ -383,6 +404,12 @@ class Go2LidarEnv(DirectRLEnv):
         # --- only reward when actually moving ---
         gait = (trot_pattern - 0.5 * wrong_pair ).clamp(min=0.0) * is_moving      
 
+        # feet dist
+        f_dist_squarred = torch.sum(torch.square(self._robot.data.body_pos_w[:,self._feet_ids[0],:2]-self._robot.data.body_pos_w[:,self._feet_ids[1],:2]), dim = 1)
+        r_dist_squarred = torch.sum(torch.square(self._robot.data.body_pos_w[:,self._feet_ids[2],:2]-self._robot.data.body_pos_w[:,self._feet_ids[3],:2]), dim = 1)
+        feet_dist_error = torch.min((f_dist_squarred - self.cfg.feet_dist_threshold**2) + (r_dist_squarred - self.cfg.feet_dist_threshold**2), torch.zeros(self.num_envs,device=self.device))
+        
+
         # undesired contacts
         is_contact = (
             torch.max(torch.norm(net_contact_forces[:, :, self._undesired_contact_body_ids], dim=-1), dim=1)[0] > 1.0
@@ -390,7 +417,7 @@ class Go2LidarEnv(DirectRLEnv):
         contacts = torch.sum(is_contact, dim=1)
         
         # flat orientation
-        flat_orientation = torch.sum(torch.square(self._robot.data.projected_gravity_b[:, :2]), dim=1)
+        # flat_orientation = torch.sum(torch.square(self._robot.data.projected_gravity_b[:, :2]), dim=1)
         
         # stay around default pos:        
         joint_deviation = torch.sum(torch.square(self._robot.data.joint_pos - self._robot.data.default_joint_pos), dim=1)
@@ -403,11 +430,14 @@ class Go2LidarEnv(DirectRLEnv):
             "ang_vel_xy_l2": ang_vel_error * self.cfg.ang_vel_reward_scale * self.step_dt,
             "dof_torques_l2": joint_torques * self.cfg.joint_torque_reward_scale * self.step_dt,
             "dof_acc_l2": joint_accel * self.cfg.joint_accel_reward_scale * self.step_dt,
+            "dof_energy_l2": joint_energy * self.cfg.joint_energy_reward_scale * self.step_dt,
             "action_rate_l2": action_rate * self.cfg.action_rate_reward_scale * self.step_dt,
-            "feet_air_time": air_time * self.cfg.feet_air_time_reward_scale * self.step_dt,
+            "action_rate_2_l2": action_rate_2 * self.cfg.action_rate_2_reward_scale * self.step_dt,
+            # "feet_air_time": air_time * self.cfg.feet_air_time_reward_scale * self.step_dt,
             "feet_gait": gait * self.cfg.gait_reward_scale * self.step_dt,
+            "feet_dist": feet_dist_error * self.cfg.feet_dist_reward_scale * self.step_dt,
             "undesired_contacts": contacts * self.cfg.undesired_contact_reward_scale * self.step_dt,
-            "flat_orientation_l2": flat_orientation * self.cfg.flat_orientation_reward_scale * self.step_dt,
+            # "flat_orientation_l2": flat_orientation * self.cfg.flat_orientation_reward_scale * self.step_dt,
             "def_pos" : def_pos * self.cfg.def_pos_reward_scale * self.step_dt
         }
         reward = torch.sum(torch.stack(list(rewards.values())), dim=0)
@@ -435,6 +465,7 @@ class Go2LidarEnv(DirectRLEnv):
             self.episode_length_buf[:] = torch.randint_like(self.episode_length_buf, high=int(self.max_episode_length))
         self._actions[reset_env_ids] = 0.0
         self._previous_actions[reset_env_ids] = 0.0
+        self._previous__previous_actions[reset_env_ids] = 0.0
         # Sample new commands
         self.command_manager.reset(reset_env_ids)
         if hasattr(self, "_rots"):
