@@ -53,7 +53,7 @@ class Go2LidarEnv(DirectRLEnv):
                 "dof_torques_l2",
                 "dof_acc_l2",
                 "dof_energy_l2",
-                "ction_rate_l2",
+                "action_rate_l2",
                 "action_rate_2_l2",
                 # "feet_air_time",
                 "feet_gait",
