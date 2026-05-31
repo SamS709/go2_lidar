@@ -21,7 +21,7 @@ from isaaclab.utils import configclass
 # Pre-defined configs
 ##
 from isaaclab_assets.robots.unitree import UNITREE_GO2_CFG  # isort: skip
-from isaaclab.terrains.config.rough import ROUGH_TERRAINS_CFG  # isort: skip
+# from isaaclab.terrains.config.rough import ROUGH_TERRAINS_CFG  # isort: skip
 import isaaclab.terrains as terrain_gen
 
 from isaaclab.terrains.terrain_generator_cfg import TerrainGeneratorCfg
@@ -238,7 +238,8 @@ class Go2LidarFlatEnvCfg(DirectRLEnvCfg):
     feet_air_time_reward_scale = 0.01
     undesired_contact_reward_scale = -1.0
     flat_orientation_reward_scale = 0.0
-    velocity_threshold = 0.01
+    feet_vertical_surface_contacts_reward_scale = -0.25
+    velocity_threshold = 0.03
     def_pos_reward_scale = -0.005
     stand_still_scale = 100.0
     
@@ -256,50 +257,46 @@ class Go2LidarRoughEnvCfg(Go2LidarFlatEnvCfg):
     
     curriculum: CurriculumCfg = CurriculumCfg()
     
-    TERRAINS_CFG = TerrainGeneratorCfg(
+    
+    ROUGH_TERRAINS_CFG = TerrainGeneratorCfg(
+        curriculum=True,
         size=(8.0, 8.0),
         border_width=20.0,
-        num_rows=1,
-        num_cols=1,
+        num_rows=10,
+        num_cols=20,
         horizontal_scale=0.1,
         vertical_scale=0.005,
         slope_threshold=0.75,
         use_cache=False,
         sub_terrains={
-            # "random_rough": terrain_gen.HfRandomUniformTerrainCfg(
-            #     proportion=0.2, noise_range=(0.01, 0.06), noise_step=0.01, border_width=0.25
-            # ),
-            "pyramid_stairs_inv": terrain_gen.MeshPyramidStairsTerrainCfg(
-                proportion=1.0,
-                step_height_range=(0.05, 0.15),
-                step_width=0.3,
-                platform_width=2.0,
-                border_width=1.0,
-                holes=False,
+            "flat": terrain_gen.MeshPlaneTerrainCfg(
+                proportion=0.2
             ),
-            # "pyramid_stairs_inv": terrain_gen.MeshInvertedPyramidStairsTerrainCfg(
-            #     proportion=0.4,
-            #     step_height_range=(0.05, 0.15),
-            #     step_width=0.3,
-            #     platform_width=2.0,
-            #     border_width=1.0,
-            #     holes=False,
-            # )
+            "boxes": terrain_gen.MeshRandomGridTerrainCfg(
+                proportion=0.1, grid_width=0.45, grid_height_range=(0.05, 0.15), platform_width=2.0,
+            ),
+            "star": terrain_gen.MeshStarTerrainCfg(
+                proportion=0.1, num_bars=10, bar_width_range=(0.15, 0.20), bar_height_range=(0.05, 0.15), platform_width=2.0,
+            ),
+            "random_rough": terrain_gen.HfRandomUniformTerrainCfg(
+                proportion=0.1, noise_range=(0.02, 0.06), noise_step=0.02, border_width=0.25
+            ),
+            "hf_pyramid_slope": terrain_gen.HfPyramidSlopedTerrainCfg(
+                proportion=0.1, slope_range=(0.2, 0.4), platform_width=2.0, border_width=0.25
+            ),
+            "hf_pyramid_slope_inv": terrain_gen.HfInvertedPyramidSlopedTerrainCfg(
+                proportion=0.1, slope_range=(0.2, 0.4), platform_width=2.0, border_width=0.25
+            ),
+            "pyramid_stairs": terrain_gen.MeshPyramidStairsTerrainCfg(
+                proportion=0.15, step_height_range=(0.05, 0.25), step_width=0.3,
+                platform_width=3.0, border_width=1.0, holes=False,
+            ),
+            "pyramid_stairs_inv": terrain_gen.MeshInvertedPyramidStairsTerrainCfg(
+                proportion=0.15, step_height_range=(0.05, 0.25), step_width=0.3,
+                platform_width=3.0, border_width=1.0, holes=False,
+            ),
         },
     )
-    # ROUGH_TERRAINS_CFG.num_cols = 5
-    # ROUGH_TERRAINS_CFG.num_rows = 5
-    # ROUGH_TERRAINS_CFG.sub_terrains["pyramid_stairs_inv"].step_height_range = (0.1, 0.1)
-    
-    ROUGH_TERRAINS_CFG.sub_terrains["boxes"].grid_height_range = (0.025, 0.15)
-    ROUGH_TERRAINS_CFG.sub_terrains["random_rough"].noise_range = (0.01, 0.06)
-    # ROUGH_TERRAINS_CFG.sub_terrains["random_rough"].noise_range = (0.002, 0.004)
-    ROUGH_TERRAINS_CFG.sub_terrains["random_rough"].noise_step = 0.01
-    
-    # ROUGH_TERRAINS_CFG.sub_terrains["pyramid_stairs"].proportion = 0.0
-    # ROUGH_TERRAINS_CFG.sub_terrains["random_rough"].proportion = 1.0
-    # ROUGH_TERRAINS_CFG.sub_terrains["boxes"].proportion = 0.0
-    # ROUGH_TERRAINS_CFG.sub_terrains["pyramid_stairs_inv"].proportion = 0.0
     terrain = TerrainImporterCfg(
         prim_path="/World/ground",
         terrain_type="generator",
