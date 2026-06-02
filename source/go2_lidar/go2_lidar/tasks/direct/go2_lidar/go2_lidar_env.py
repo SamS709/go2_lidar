@@ -58,7 +58,7 @@ class Go2LidarEnv(DirectRLEnv):
                 "feet_air_time",
                 "feet_gait",
                 "feet_dist",
-                "undesired_contacts",
+                # "undesired_contacts",
                 # "flat_orientation_l2",
                 "def_pos",
                 "feet_vertical_surface"
@@ -161,7 +161,8 @@ class Go2LidarEnv(DirectRLEnv):
         self._previous_previous_actions = self._previous_actions.clone()
         self._previous_actions = self._actions.clone()
         self._actions = actions.clone()
-        self._actions = torch.clamp(self._actions, -self.cfg.desired_clip_actions, self.cfg.desired_clip_actions)
+        if self.cfg.clamp_actions:
+            self._actions = torch.clamp(self._actions, -self.cfg.desired_clip_actions, self.cfg.desired_clip_actions)
         
         if(self.cfg.filter_actions):
             alpha = 0.8
@@ -313,7 +314,6 @@ class Go2LidarEnv(DirectRLEnv):
             self._robot.data.joint_pos - self._robot.data.default_joint_pos + noise(self._robot.data.joint_pos, 0.01),
             self._robot.data.joint_vel + noise(self._robot.data.joint_vel, 0.1),
             self._actions,
-            self._previous_actions,
         ], dim=-1)
         actor_proprio = self._sanitize_tensor(actor_proprio, "actor_proprio", clamp_abs=100.0)
 
@@ -330,8 +330,11 @@ class Go2LidarEnv(DirectRLEnv):
             self._robot.data.joint_vel,
             foot_contacts,
             self._actions,
-            self._previous_actions,
         ], dim=-1)
+        
+        if self.cfg.filter_actions:
+            actor_proprio = torch.cat([actor_proprio, self._previous_actions], dim=-1)
+            critic_proprio = torch.cat([critic_proprio, self._previous_actions], dim=-1)
         
         critic_proprio = self._sanitize_tensor(critic_proprio, "critic_proprio", clamp_abs=100.0)
 
@@ -408,10 +411,10 @@ class Go2LidarEnv(DirectRLEnv):
         
 
         # undesired contacts
-        is_contact = (
-            torch.max(torch.norm(self._contact_sensor.data.net_forces_w_history[:, :, self._undesired_contact_body_ids], dim=-1), dim=1)[0] > 1.0
-        )
-        contacts = torch.sum(is_contact, dim=1)
+        # is_contact = (
+        #     torch.max(torch.norm(self._contact_sensor.data.net_forces_w_history[:, :, self._undesired_contact_body_ids], dim=-1), dim=1)[0] > 1.0
+        # )
+        # contacts = torch.sum(is_contact, dim=1)
         
         # flat orientation
         # flat_orientation = torch.sum(torch.square(self._robot.data.projected_gravity_b[:, :2]), dim=1)
@@ -438,7 +441,7 @@ class Go2LidarEnv(DirectRLEnv):
             "feet_air_time": air_time * self.cfg.feet_air_time_reward_scale * self.step_dt,
             "feet_gait": gait * self.cfg.gait_reward_scale * self.step_dt,
             "feet_dist": feet_dist_error * self.cfg.feet_dist_reward_scale * self.step_dt,
-            "undesired_contacts": contacts * self.cfg.undesired_contact_reward_scale * self.step_dt,
+            # "undesired_contacts": contacts * self.cfg.undesired_contact_reward_scale * self.step_dt,
             # "flat_orientation_l2": flat_orientation * self.cfg.flat_orientation_reward_scale * self.step_dt,
             "def_pos" : def_pos * self.cfg.def_pos_reward_scale * self.step_dt,
             "feet_vertical_surface" : feet_vertical_surface_contacts * self.cfg.feet_vertical_surface_contacts_reward_scale * self.step_dt
