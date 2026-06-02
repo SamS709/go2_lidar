@@ -9,6 +9,8 @@ import gymnasium as gym
 import torch
 
 import isaaclab.sim as sim_utils
+import isaaclab.utils.math as math_utils
+
 from isaaclab.assets import Articulation
 from isaaclab.envs import DirectRLEnv
 from isaaclab.sensors import ContactSensor, RayCaster
@@ -41,7 +43,7 @@ class Go2LidarEnv(DirectRLEnv):
         # X/Y linear velocity and yaw angular velocity commands
         self.command_manager = CommandManager(self.cfg.commands, self)
         self.curriculum_manager = CurriculumManager(self.cfg.curriculum, self)
-        
+        self._desired_hip_offset = torch.tensor([-self.cfg.desired_hip_offset, self.cfg.desired_hip_offset, -self.cfg.desired_hip_offset, self.cfg.desired_hip_offset], device=self.device)
         # Logging
         self._episode_sums = {
             key: torch.zeros(self.num_envs, dtype=torch.float, device=self.device)
@@ -57,22 +59,25 @@ class Go2LidarEnv(DirectRLEnv):
                 "action_rate_2_l2",
                 "feet_air_time",
                 "feet_gait",
-                "feet_dist",
+                # "feet_dist",
                 # "undesired_contacts",
                 # "flat_orientation_l2",
                 "def_pos",
+                "feet_to_hip",
                 "feet_vertical_surface"
             ]
         }
         # Get specific body indices
-        self._base_id, _ = self._contact_sensor.find_bodies("base")
-        self._feet_ids, _ = self._contact_sensor.find_bodies(".*_foot")
-        self._thigh_ids, _ = self._contact_sensor.find_bodies(".*_thigh")
-        self._hip_ids, _ = self._contact_sensor.find_bodies(".*_hip")
-        self._calf_ids, _ = self._contact_sensor.find_bodies(".*_calf")
+        self._base_id, _base_name = self._contact_sensor.find_bodies("base")
+        self._feet_ids, _feet_name = self._contact_sensor.find_bodies(".*_foot")
+        self._thigh_ids, _thigh_name = self._contact_sensor.find_bodies(".*_thigh")
+        self._hip_ids, _hip_name = self._contact_sensor.find_bodies(".*_hip")
+        self._calf_ids, _calf_name = self._contact_sensor.find_bodies(".*_calf")
         self._undesired_contact_body_ids = self._thigh_ids
         self._body_contact_info_teacher = self._base_id + self._thigh_ids + self._calf_ids
         self._finite_warn_counter = 0
+        print(_feet_name)
+        print(_hip_name)
         print("FEET iDS: ", self._feet_ids)
         print("RL ID: ", self._contact_sensor.find_bodies("RL_foot"))
         print("FL ID: ", self._contact_sensor.find_bodies("FL_foot"))
@@ -136,7 +141,9 @@ class Go2LidarEnv(DirectRLEnv):
             # self._height_scanner_critic = RayCaster(self.cfg.height_scanner_critic)
             self.scene.sensors["height_scanner"] = self._height_scanner
             # self.scene.sensors["height_scanner_critic"] = self._height_scanner_critic
-            self._create_gaussian_heightmap(15, 10)
+            x_cells = max(1, int((self.cfg.x_range[1] - self.cfg.x_range[0]) / self.cfg.res))
+            y_cells = max(1, int((self.cfg.y_range[1] - self.cfg.y_range[0]) / self.cfg.res))
+            self._create_gaussian_heightmap(x_cells, y_cells)
             self._rots = torch.empty(self.num_envs, device=self.device)
             self._offsets = torch.empty(self.num_envs, device=self.device)
             self._rots.uniform_(-self.cfg.max_rot, self.cfg.max_rot)
@@ -300,13 +307,21 @@ class Go2LidarEnv(DirectRLEnv):
         return height_map_actor
     
     def _get_observations(self) -> dict:
+        
         height_data = self._compute_height_data_from_cloud(randomize=False)
         height_data_actor = self._compute_height_data_from_cloud(randomize=self.cfg.randomize)
         height_data = self._sanitize_tensor(height_data, "height_data", clamp_abs=10.0)
         height_data_actor = self._sanitize_tensor(height_data_actor, "height_data_actor", clamp_abs=10.0)
 
         noise = lambda t, s: (2.0 * torch.rand_like(t) - 1.0) * s * self.cfg.randomize
-
+        
+        # x_cells = max(1, int((float(self.cfg.x_range[1]) - float(self.cfg.x_range[0])) / float(self.cfg.res)))
+        # y_cells = max(1, int((float(self.cfg.y_range[1]) - float(self.cfg.y_range[0])) / float(self.cfg.res)))
+        # height_data_print = height_data.view(self.num_envs, x_cells, y_cells).unsqueeze(1)
+        # torch.set_printoptions(precision=2, linewidth=1000, sci_mode=False)
+        
+        # print("Height Data Sample (Actor): ", height_data_print + 0.28)
+        
         actor_proprio = torch.cat([
             self._robot.data.root_ang_vel_b + noise(self._robot.data.root_ang_vel_b, 0.1),
             self._robot.data.projected_gravity_b + noise(self._robot.data.projected_gravity_b, 0.05),
@@ -405,9 +420,9 @@ class Go2LidarEnv(DirectRLEnv):
         gait = (trot_pattern - 0.5 * wrong_pair ).clamp(min=0.0) * should_move      
 
         # feet dist
-        f_dist_squarred = torch.sum(torch.square(self._robot.data.body_pos_w[:,self._feet_ids[0],:2]-self._robot.data.body_pos_w[:,self._feet_ids[1],:2]), dim = 1)
-        r_dist_squarred = torch.sum(torch.square(self._robot.data.body_pos_w[:,self._feet_ids[2],:2]-self._robot.data.body_pos_w[:,self._feet_ids[3],:2]), dim = 1)
-        feet_dist_error = torch.min((f_dist_squarred - self.cfg.feet_dist_threshold**2) + (r_dist_squarred - self.cfg.feet_dist_threshold**2), torch.zeros(self.num_envs,device=self.device))
+        # f_dist_squarred = torch.sum(torch.square(self._robot.data.body_pos_w[:,self._feet_ids[0],:2]-self._robot.data.body_pos_w[:,self._feet_ids[1],:2]), dim = 1)
+        # r_dist_squarred = torch.sum(torch.square(self._robot.data.body_pos_w[:,self._feet_ids[2],:2]-self._robot.data.body_pos_w[:,self._feet_ids[3],:2]), dim = 1)
+        # feet_dist_error = torch.min((f_dist_squarred - self.cfg.feet_dist_threshold**2) + (r_dist_squarred - self.cfg.feet_dist_threshold**2), torch.zeros(self.num_envs,device=self.device))
         
 
         # undesired contacts
@@ -428,6 +443,24 @@ class Go2LidarEnv(DirectRLEnv):
         feet_vertical_surface_contacts = torch.any(forces_xy > 4 * forces_z, dim=1).float()
         feet_vertical_surface_contacts *= torch.clamp(-self._robot.data.projected_gravity_b[:, 2], 0, 0.7) / 0.7
         
+        # feet to hip distance --------------------------------------------------------------------------------
+        ROT_W2H = math_utils.matrix_from_quat(math_utils.yaw_quat(self._robot.data.root_quat_w))
+        feet_to_base_w = self._robot.data.body_pos_w[:, self._feet_ids, :3] - self._robot.data.root_state_w[:, :3].unsqueeze(1)
+        feet_to_base_h = torch.matmul(ROT_W2H.transpose(1,2), feet_to_base_w.transpose(1, 2))
+        
+        hip_to_base_w = self._robot.data.body_pos_w[:, self._hip_ids, :3] - self._robot.data.root_state_w[:, :3].unsqueeze(1)
+        hip_to_base_h = torch.matmul(ROT_W2H.transpose(1,2), hip_to_base_w.transpose(1, 2))
+        
+        desired_hip_offset = self._desired_hip_offset
+        feet_to_hip_distance_x = torch.square(feet_to_base_h[:, 0] - hip_to_base_h[:, 0])
+        feet_to_hip_distance_y = torch.square(feet_to_base_h[:, 1] + desired_hip_offset.unsqueeze(0) - hip_to_base_h[:, 1])
+        feet_to_hip_distance = -torch.mean(torch.sqrt(feet_to_hip_distance_x + feet_to_hip_distance_y), dim=1)
+        # If should_move is False, multiply the distance by 3 (GPU-friendly, vectorized)
+        # `should_move` is a boolean tensor defined earlier (shape: [num_envs])
+        feet_to_hip_distance = feet_to_hip_distance * torch.where(
+            should_move, torch.ones_like(feet_to_hip_distance), torch.full_like(feet_to_hip_distance, 3.0)
+        )
+        
         rewards = {
             "track_lin_vel_xy_exp": lin_vel_error_mapped * self.cfg.lin_vel_reward_scale * self.step_dt,
             "track_ang_vel_z_exp": yaw_rate_error_mapped * self.cfg.yaw_rate_reward_scale * self.step_dt,
@@ -440,10 +473,11 @@ class Go2LidarEnv(DirectRLEnv):
             "action_rate_2_l2": action_rate_2 * self.cfg.action_rate_2_reward_scale * self.step_dt,
             "feet_air_time": air_time * self.cfg.feet_air_time_reward_scale * self.step_dt,
             "feet_gait": gait * self.cfg.gait_reward_scale * self.step_dt,
-            "feet_dist": feet_dist_error * self.cfg.feet_dist_reward_scale * self.step_dt,
+            # "feet_dist": feet_dist_error * self.cfg.feet_dist_reward_scale * self.step_dt,
             # "undesired_contacts": contacts * self.cfg.undesired_contact_reward_scale * self.step_dt,
             # "flat_orientation_l2": flat_orientation * self.cfg.flat_orientation_reward_scale * self.step_dt,
             "def_pos" : def_pos * self.cfg.def_pos_reward_scale * self.step_dt,
+            "feet_to_hip" : feet_to_hip_distance * self.cfg.feet_to_hip_reward_scale * self.step_dt,
             "feet_vertical_surface" : feet_vertical_surface_contacts * self.cfg.feet_vertical_surface_contacts_reward_scale * self.step_dt
         }
         reward = torch.sum(torch.stack(list(rewards.values())), dim=0)
@@ -488,7 +522,8 @@ class Go2LidarEnv(DirectRLEnv):
         default_root_state = self._robot.data.default_root_state[reset_env_ids]
         default_root_state[:, :3] += self._terrain.env_origins[reset_env_ids]
         # Add x-axis offset to spawn position
-        # default_root_state[:, 0] += 0.5  # Offset in meters (change this value as needed)
+        # default_root_state[:, 0] += 1.0  # Offset in meters (change this value as needed)
+        # default_root_state[:, 1] += 1.0  # Offset in meters (change this value as needed)
         # # Rotate 45 degrees around z-axis at spawn
         # import math
         # angle = math.pi / 4  # 45 degrees

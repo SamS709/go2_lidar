@@ -73,7 +73,7 @@ class Go2LidarFlatPPORunnerCfg(RslRlOnPolicyRunnerCfg):
 @configclass
 class Go2LidarRoughCNNPPORunnerCfg(RslRlOnPolicyRunnerCfg):
     num_steps_per_env = 24
-    max_iterations = 50000
+    max_iterations = 100000
     save_interval = 50
     experiment_name = "go2_lidar_cnn"
     obs_groups = {
@@ -128,7 +128,7 @@ class Go2LidarRoughCNNPPORunnerCfg(RslRlOnPolicyRunnerCfg):
 @configclass
 class Go2LidarRoughRNNPPORunnerCfg(RslRlOnPolicyRunnerCfg):
     num_steps_per_env = 24
-    max_iterations = 50000
+    max_iterations = 100000
     save_interval = 50
     experiment_name = "go2_lidar_rnn"
 
@@ -173,7 +173,7 @@ class Go2LidarRoughRNNPPORunnerCfg(RslRlOnPolicyRunnerCfg):
 @configclass
 class Go2LidarRoughMLPPPORunnerCfg(RslRlOnPolicyRunnerCfg):
     num_steps_per_env = 24
-    max_iterations = 50000
+    max_iterations = 100000
     save_interval = 50
     experiment_name = "go2_lidar_mlp"
 

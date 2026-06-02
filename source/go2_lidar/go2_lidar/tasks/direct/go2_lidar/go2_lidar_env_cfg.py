@@ -245,9 +245,12 @@ class Go2LidarFlatEnvCfg(DirectRLEnvCfg):
     def_pos_reward_scale = -0.005
     stand_still_scale = 10.0
     
+    feet_to_hip_reward_scale = 1.5
+    desired_hip_offset = 0.095
+    
     # feet distance
-    feet_dist_reward_scale = 0.05
-    feet_dist_threshold = 0.2 
+    # feet_dist_reward_scale = 0.5
+    # feet_dist_threshold = 0.25
     
 
 
@@ -273,28 +276,43 @@ class Go2LidarRoughEnvCfg(Go2LidarFlatEnvCfg):
         sub_terrains={
             "flat": terrain_gen.MeshPlaneTerrainCfg(
                 proportion=0.2
+                # proportion=0.0
             ),
             "boxes": terrain_gen.MeshRandomGridTerrainCfg(
-                proportion=0.1, grid_width=0.45, grid_height_range=(0.05, 0.15), platform_width=2.0,
+                proportion=0.1, 
+                # proportion=0.0,
+                grid_width=0.45, grid_height_range=(0.05, 0.15), platform_width=2.0,
             ),
             "star": terrain_gen.MeshStarTerrainCfg(
-                proportion=0.1, num_bars=10, bar_width_range=(0.15, 0.20), bar_height_range=(0.05, 0.15), platform_width=2.0,
+                proportion=0.1, 
+                # proportion=0.0,
+                num_bars=10, bar_width_range=(0.15, 0.20), bar_height_range=(0.05, 0.15), platform_width=2.0,
             ),
             "random_rough": terrain_gen.HfRandomUniformTerrainCfg(
-                proportion=0.1, noise_range=(0.02, 0.06), noise_step=0.02, border_width=0.25
+                proportion=0.1, 
+                # proportion=0.0,
+                noise_range=(0.02, 0.06), noise_step=0.02, border_width=0.25
             ),
             "hf_pyramid_slope": terrain_gen.HfPyramidSlopedTerrainCfg(
-                proportion=0.1, slope_range=(0.2, 0.4), platform_width=2.0, border_width=0.25
+                proportion=0.1, 
+                # proportion=0.0,
+                slope_range=(0.2, 0.4), platform_width=2.0, border_width=0.25
             ),
             "hf_pyramid_slope_inv": terrain_gen.HfInvertedPyramidSlopedTerrainCfg(
-                proportion=0.1, slope_range=(0.2, 0.4), platform_width=2.0, border_width=0.25
+                proportion=0.1, 
+                # proportion=0.0,
+                slope_range=(0.2, 0.4), platform_width=2.0, border_width=0.25
             ),
             "pyramid_stairs": terrain_gen.MeshPyramidStairsTerrainCfg(
-                proportion=0.15, step_height_range=(0.05, 0.25), step_width=0.3,
+                proportion=0.15,
+                # proportion=0.0,
+                step_height_range=(0.05, 0.25), step_width=0.3,
                 platform_width=3.0, border_width=1.0, holes=False,
             ),
             "pyramid_stairs_inv": terrain_gen.MeshInvertedPyramidStairsTerrainCfg(
-                proportion=0.15, step_height_range=(0.05, 0.25), step_width=0.3,
+                proportion=0.15, 
+                # proportion=1.0,
+                step_height_range=(0.05, 0.25), step_width=0.3,
                 platform_width=3.0, border_width=1.0, holes=False,
             ),
         },
@@ -322,7 +340,7 @@ class Go2LidarRoughEnvCfg(Go2LidarFlatEnvCfg):
     # New grid-based heightmap config (values are in lidar frame).
     # NOTE: `res` is used as cell size in meters.
     res = 0.1
-    x_range = [-0.5, 1.0]
+    x_range = [-0.5, 0.8]
     y_range = [-0.5, 0.5]
     # height_map_cells = int(2 * height_map_dist * res) ** 2  
     # observation_space = 53 + height_map_cells  
@@ -359,7 +377,7 @@ class Go2LidarRoughEnvCfg(Go2LidarFlatEnvCfg):
         pattern_cfg=patterns.LidarPatternCfg(
             channels=64, vertical_fov_range=[0.0, 90.0], horizontal_fov_range=[-180, 180], horizontal_res=2.0
         ),
-        max_distance=4.0,
+        max_distance=2.0,
         debug_vis=False,
     )
    
