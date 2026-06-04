@@ -63,12 +63,12 @@ class EventCfg:
      # startup
     physics_material = EventTerm(
         func=mdp.randomize_rigid_body_material,
-        mode="startup",
+        mode="reset",
         params={
             "asset_cfg": SceneEntityCfg("robot", body_names=".*"),
-            "static_friction_range": (0.2, 1.25),
-            "dynamic_friction_range": (0.2, 1.25),
-            "restitution_range": (0.0, 0.1),
+            "static_friction_range": (0.3, 1.2),
+            "dynamic_friction_range": (0.3, 1.2),
+            "restitution_range": (0.0, 0.15),
             "num_buckets": 64,
         },
     )
@@ -88,7 +88,7 @@ class EventCfg:
         mode="startup",
         params={
             "asset_cfg": SceneEntityCfg("robot", body_names="base"),
-            "com_range": {"x": (-0.02, 0.02), "y": (-0.02, 0.02), "z": (-0.02, 0.02)},
+            "com_range": {"x": (-0.1, 0.1), "y": (-0.05, 0.05), "z": (-0.02, 0.02)},
         },
     )
     
