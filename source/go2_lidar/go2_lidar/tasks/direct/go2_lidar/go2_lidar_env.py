@@ -15,7 +15,7 @@ from isaaclab.assets import Articulation
 from isaaclab.envs import DirectRLEnv
 from isaaclab.sensors import ContactSensor, RayCaster
 from isaaclab.managers import CommandManager, CurriculumManager
-from isaaclab.utils.math import quat_conjugate, quat_apply, quat_mul, quat_inv
+from isaaclab.utils.math import quat_conjugate, quat_apply, quat_mul, quat_inv, quat_rotate_inverse
 
 from .go2_lidar_env_cfg import Go2LidarFlatEnvCfg, Go2LidarRoughEnvCfg
 
@@ -68,23 +68,23 @@ class Go2LidarEnv(DirectRLEnv):
             ]
         }
         # Get specific body indices
-        self._base_id, _base_name = self._contact_sensor.find_bodies("base")
-        self._feet_ids, _feet_name = self._contact_sensor.find_bodies(".*_foot")
-        self._thigh_ids, _thigh_name = self._contact_sensor.find_bodies(".*_thigh")
-        self._hip_ids, _hip_name = self._contact_sensor.find_bodies(".*_hip")
-        self._calf_ids, _calf_name = self._contact_sensor.find_bodies(".*_calf")
-        self._undesired_contact_body_ids = self._thigh_ids
-        self._body_contact_info_teacher = self._base_id + self._thigh_ids + self._calf_ids
+        self._base_id_sensor, _base_name = self._contact_sensor.find_bodies("base")
+        self._feet_ids_sensor, _feet_name = self._contact_sensor.find_bodies(".*_foot")
+        self._thigh_ids_sensor, _thigh_name = self._contact_sensor.find_bodies(".*_thigh")
+        self._hip_ids_sensor, _hip_name = self._contact_sensor.find_bodies(".*_hip")
+        self._calf_ids_sensor, _calf_name = self._contact_sensor.find_bodies(".*_calf")
+        
+        self._base_id, _ = self._robot.find_bodies("base")
+        self._feet_ids, _ = self._robot.find_bodies(".*_foot")
+        self._thigh_ids, _ = self._robot.find_bodies(".*_thigh")
+        self._hip_ids, _ = self._robot.find_bodies(".*_hip")
+        self._calf_ids, _ = self._robot.find_bodies(".*_calf")
+        
+        self._undesired_contact_body_ids_sensor = self._thigh_ids_sensor
+        self._body_contact_info_teacher_sensor = self._base_id_sensor + self._thigh_ids_sensor + self._calf_ids_sensor
         self._finite_warn_counter = 0
-        print(_feet_name)
-        print(_hip_name)
-        print("FEET iDS: ", self._feet_ids)
-        print("RL ID: ", self._contact_sensor.find_bodies("RL_foot"))
-        print("FL ID: ", self._contact_sensor.find_bodies("FL_foot"))
-        print("RR ID: ", self._contact_sensor.find_bodies("RR_foot"))
-        print("FR ID: ", self._contact_sensor.find_bodies("FR_foot"))
-        print("UNDESIRED CONTACTS: Thighs and Calfs")
-        print("IDS: ", self._undesired_contact_body_ids)
+        
+        
 
     def _sanitize_tensor(self, tensor: torch.Tensor, name: str, clamp_abs: float | None = None) -> torch.Tensor:
         """Replace non-finite values and optionally clamp to avoid destabilizing PPO updates."""
@@ -334,7 +334,7 @@ class Go2LidarEnv(DirectRLEnv):
 
         actor_grid = self._sanitize_tensor(height_data_actor, "actor_grid", clamp_abs=10.0)
 
-        foot_contacts = (torch.norm(self._contact_sensor.data.net_forces_w[:, self._feet_ids], dim=-1) > 1.0).float()
+        foot_contacts = (torch.norm(self._contact_sensor.data.net_forces_w[:, self._feet_ids_sensor], dim=-1) > 1.0).float()
         
         critic_proprio = torch.cat([
             self._robot.data.root_lin_vel_b,
@@ -385,8 +385,8 @@ class Go2LidarEnv(DirectRLEnv):
         # action rate, order 2:
         action_rate_2 = torch.sum(torch.square(self._actions - 2*self._previous_actions + self._previous_previous_actions), dim=1)        
         # feet air time
-        first_contact = self._contact_sensor.compute_first_contact(self.step_dt)[:, self._feet_ids]
-        last_air_time = self._contact_sensor.data.last_air_time[:, self._feet_ids]
+        first_contact = self._contact_sensor.compute_first_contact(self.step_dt)[:, self._feet_ids_sensor]
+        last_air_time = self._contact_sensor.data.last_air_time[:, self._feet_ids_sensor]
         air_time = torch.sum(torch.clamp(last_air_time - 0.5, min=0.0) * first_contact, dim=1) * (
             torch.norm(self.command_manager.get_command("base_velocity")[:, :2], dim=1) > 0.1
         )
@@ -396,7 +396,7 @@ class Go2LidarEnv(DirectRLEnv):
         should_move = cmd > 0.01 
 
         # gait trot
-        foot_contact = torch.norm(self._contact_sensor.data.net_forces_w[:, self._feet_ids], dim=-1) > 1.0
+        foot_contact = torch.norm(self._contact_sensor.data.net_forces_w[:, self._feet_ids_sensor], dim=-1) > 1.0
         # FEET iDS:  [4, 8, 14, 18]
         # RL ID:  ([14], ['RL_foot'])
         # FL ID:  ([4], ['FL_foot'])
@@ -438,12 +438,13 @@ class Go2LidarEnv(DirectRLEnv):
         joint_deviation = torch.sum(torch.square(self._robot.data.joint_pos - self._robot.data.default_joint_pos), dim=1)
         def_pos = torch.where(should_move, joint_deviation, self.cfg.stand_still_scale * joint_deviation)
 
-        forces_z = torch.abs(self._contact_sensor.data.net_forces_w[:, self._feet_ids, 2])
-        forces_xy = torch.linalg.norm(self._contact_sensor.data.net_forces_w[:, self._feet_ids, :2], dim=2)
+        forces_z = torch.abs(self._contact_sensor.data.net_forces_w[:, self._feet_ids_sensor, 2])
+        forces_xy = torch.linalg.norm(self._contact_sensor.data.net_forces_w[:, self._feet_ids_sensor, :2], dim=2)
         feet_vertical_surface_contacts = torch.any(forces_xy > 4 * forces_z, dim=1).float()
         feet_vertical_surface_contacts *= torch.clamp(-self._robot.data.projected_gravity_b[:, 2], 0, 0.7) / 0.7
         
         # feet to hip distance --------------------------------------------------------------------------------
+        
         ROT_W2H = math_utils.matrix_from_quat(math_utils.yaw_quat(self._robot.data.root_quat_w))
         feet_to_base_w = self._robot.data.body_pos_w[:, self._feet_ids, :3] - self._robot.data.root_state_w[:, :3].unsqueeze(1)
         feet_to_base_h = torch.matmul(ROT_W2H.transpose(1,2), feet_to_base_w.transpose(1, 2))
@@ -460,6 +461,7 @@ class Go2LidarEnv(DirectRLEnv):
         feet_to_hip_distance = feet_to_hip_distance * torch.where(
             should_move, torch.ones_like(feet_to_hip_distance), torch.full_like(feet_to_hip_distance, 3.0)
         )
+        
         
         rewards = {
             "track_lin_vel_xy_exp": lin_vel_error_mapped * self.cfg.lin_vel_reward_scale * self.step_dt,
@@ -490,8 +492,8 @@ class Go2LidarEnv(DirectRLEnv):
     def _get_dones(self) -> tuple[torch.Tensor, torch.Tensor]:
         time_out = self.episode_length_buf >= self.max_episode_length - 1
         net_contact_forces = self._contact_sensor.data.net_forces_w_history
-        died_base = torch.any(torch.max(torch.norm(net_contact_forces[:, :, self._base_id], dim=-1), dim=1)[0] > 1.0, dim=1)
-        died_hips = torch.any(torch.max(torch.norm(net_contact_forces[:, :, self._hip_ids], dim=-1), dim=1)[0] > 1.0, dim=1) 
+        died_base = torch.any(torch.max(torch.norm(net_contact_forces[:, :, self._base_id_sensor], dim=-1), dim=1)[0] > 1.0, dim=1)
+        died_hips = torch.any(torch.max(torch.norm(net_contact_forces[:, :, self._hip_ids_sensor], dim=-1), dim=1)[0] > 1.0, dim=1) 
         died = torch.logical_or(died_base, died_hips)
         return died, time_out
 

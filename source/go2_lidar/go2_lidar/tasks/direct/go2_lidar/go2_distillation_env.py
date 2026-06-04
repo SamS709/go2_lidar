@@ -88,9 +88,9 @@ class Go2TeacherStudentEnv(Go2LidarEnv):
         )
         
         base_lin_vel = self._robot.data.root_lin_vel_b 
-        foot_contacts = (torch.norm(self._contact_sensor.data.net_forces_w[:, self._feet_ids], dim=-1) > 1.0).float()
+        foot_contacts = (torch.norm(self._contact_sensor.data.net_forces_w[:, self._feet_ids_sensor], dim=-1) > 1.0).float()
         is_contact = (
-            torch.max(torch.norm(self._contact_sensor.data.net_forces_w_history[:, :, self._body_contact_info_teacher], dim=-1), dim=1)[0] > 1.0
+            torch.max(torch.norm(self._contact_sensor.data.net_forces_w_history[:, :, self._body_contact_info_teacher_sensor], dim=-1), dim=1)[0] > 1.0
         )
 
         teacher_obs = torch.cat(
@@ -180,9 +180,9 @@ class Go2TeacherStudentCNNEnv(Go2LidarEnv):
         )
         
         base_lin_vel = self._robot.data.root_lin_vel_b 
-        foot_contacts = (torch.norm(self._contact_sensor.data.net_forces_w[:, self._feet_ids], dim=-1) > 1.0).float()
+        foot_contacts = (torch.norm(self._contact_sensor.data.net_forces_w[:, self._feet_ids_sensor], dim=-1) > 1.0).float()
         is_contact = (
-            torch.max(torch.norm(self._contact_sensor.data.net_forces_w_history[:, :, self._body_contact_info_teacher], dim=-1), dim=1)[0] > 1.0
+            torch.max(torch.norm(self._contact_sensor.data.net_forces_w_history[:, :, self._body_contact_info_teacher_sensor], dim=-1), dim=1)[0] > 1.0
         )
 
         proprio_teacher = torch.cat(

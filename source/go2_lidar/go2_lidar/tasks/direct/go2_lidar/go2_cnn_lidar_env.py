@@ -75,9 +75,9 @@ class Go2LidarCNNEnv(Go2LidarEnv):
 
         # Critic (privileged) proprio observations — include privileged sensors like base linear velocity,
         # contact flags and other privileged terms useful for value estimation.
-        foot_contacts = (torch.norm(self._contact_sensor.data.net_forces_w[:, self._feet_ids], dim=-1) > 1.0).float()
+        foot_contacts = (torch.norm(self._contact_sensor.data.net_forces_w[:, self._feet_ids_sensor], dim=-1) > 1.0).float()
         is_contact = (
-            torch.max(torch.norm(self._contact_sensor.data.net_forces_w_history[:, :, self._body_contact_info_teacher], dim=-1), dim=1)[0] > 1.0
+            torch.max(torch.norm(self._contact_sensor.data.net_forces_w_history[:, :, self._body_contact_info_teacher_sensor], dim=-1), dim=1)[0] > 1.0
         )
 
         critic_proprio = torch.cat(
