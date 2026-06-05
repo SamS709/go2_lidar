@@ -278,7 +278,7 @@ class Go2LidarEnv(DirectRLEnv):
         height_map = torch.full((num_envs * num_cells,), -torch.inf, device=self.device)
         height_map.scatter_reduce_(0, flat_idx, z_vals, reduce="amax", include_self=True)
         height_map = torch.where(torch.isfinite(height_map), -height_map, torch.zeros_like(height_map))
-        height_map = height_map.reshape(num_envs, num_cells).flip(dims=[1]) - 0.28
+        height_map = height_map.flip(dims=[1]).reshape(num_envs, num_cells) - 0.28
         if randomize:
             height_map = self._apply_offset(height_map)
             height_map += (2.0 * torch.rand_like(height_map) - 1.0) * float(0.01)
