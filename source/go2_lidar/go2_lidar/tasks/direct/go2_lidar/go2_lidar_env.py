@@ -313,12 +313,12 @@ class Go2LidarEnv(DirectRLEnv):
 
         noise = lambda t, s: (2.0 * torch.rand_like(t) - 1.0) * s * self.cfg.randomize
         
-        x_cells = max(1, int((float(self.cfg.x_range[1]) - float(self.cfg.x_range[0])) / float(self.cfg.res)))
-        y_cells = max(1, int((float(self.cfg.y_range[1]) - float(self.cfg.y_range[0])) / float(self.cfg.res)))
-        height_data_print = height_data.view(self.num_envs, x_cells, y_cells).unsqueeze(1)
-        torch.set_printoptions(precision=2, linewidth=1000, sci_mode=False)
+        # x_cells = max(1, int((float(self.cfg.x_range[1]) - float(self.cfg.x_range[0])) / float(self.cfg.res)))
+        # y_cells = max(1, int((float(self.cfg.y_range[1]) - float(self.cfg.y_range[0])) / float(self.cfg.res)))
+        # height_data_print = height_data.view(self.num_envs, x_cells, y_cells).unsqueeze(1)
+        # torch.set_printoptions(precision=2, linewidth=1000, sci_mode=False)
         
-        print(height_data_print + 0.28)
+        # print(height_data_print + 0.28)
         
         actor_proprio = torch.cat([
             self._robot.data.root_ang_vel_b + noise(self._robot.data.root_ang_vel_b, 0.1),
