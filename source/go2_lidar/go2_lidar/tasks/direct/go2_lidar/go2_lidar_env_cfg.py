@@ -281,7 +281,10 @@ class Go2LidarRoughEnvCfg(Go2LidarFlatEnvCfg):
             "boxes": terrain_gen.MeshRandomGridTerrainCfg(
                 proportion=0.1, 
                 # proportion=0.0,
-                grid_width=0.45, grid_height_range=(0.05, 0.15), platform_width=2.0,
+                grid_width=0.45, 
+                grid_height_range=(0.05, 0.15), 
+                # grid_height_range=(0.15, 0.15), 
+                platform_width=2.0,
             ),
             "star": terrain_gen.MeshStarTerrainCfg(
                 proportion=0.1, 
@@ -346,8 +349,6 @@ class Go2LidarRoughEnvCfg(Go2LidarFlatEnvCfg):
     # observation_space = 53 + height_map_cells  
     
     # lidar_range = height_map_dist * 3.0 # * 1.4142135623730951  # sqrt(2)
-    lidar_offset = (0.28945, 0.0, -0.04682)
-    lidar_rotation = (0.13131596830945724, 0.0, 0.9913405653290647, 0.0)
 
     # New scanner path: multi-mesh ray-caster over /World.
     # height_scanner = MultiMeshRayCasterCfg(
@@ -366,11 +367,11 @@ class Go2LidarRoughEnvCfg(Go2LidarFlatEnvCfg):
     #     debug_vis=False,
     # )
     height_scanner = RayCasterCfg(
-        prim_path="/World/envs/env_.*/Robot/base",
+        prim_path="/World/envs/env_.*/Robot/base/radar",
         update_period=1 / 60,
         offset=RayCasterCfg.OffsetCfg(
-            pos=lidar_offset,
-            rot=lidar_rotation,
+            # pos=lidar_offset,
+            # rot=lidar_rotation,
         ),
         mesh_prim_paths=["/World"],
         ray_alignment="base",
@@ -400,9 +401,9 @@ class Go2LidarRoughEnvCfg(Go2LidarFlatEnvCfg):
     # Pre-computed quaternion (w, x, y, z) from euler angles (-pi, pi - 2.8782, -pi)
 
     sigma = 4.00
-    n_zeros = 18
+    n_zeros = 20
     max_reset_zeros_freq = 8
-    max_rot = 7.0
+    max_rot = 5.0
     max_offset = 0.07
     
     # the heightmap is 1.5 * 1, offseted by lidar offset + 0.25 on x such that it detects 1 metter in front of and 0.5 meters behind the lidar frame

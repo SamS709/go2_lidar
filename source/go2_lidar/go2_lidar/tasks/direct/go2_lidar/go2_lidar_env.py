@@ -235,14 +235,12 @@ class Go2LidarEnv(DirectRLEnv):
         ray_hits_w = data.ray_hits_w
         lidar_pos_w = data.pos_w
         lidar_quat_w = data.quat_w
-
         num_envs, num_rays, _ = ray_hits_w.shape
-        rays_rel_w = ray_hits_w - lidar_pos_w.unsqueeze(1)
+        rays_rel_w = - ray_hits_w + lidar_pos_w.unsqueeze(1)
         rays_lidar = quat_apply(
             quat_conjugate(lidar_quat_w).unsqueeze(1).expand(num_envs, num_rays, 4).reshape(-1, 4),
             rays_rel_w.reshape(-1, 3),
         ).reshape(num_envs, num_rays, 3)
-
         if randomize and hasattr(self, "_rots"):
             rays_lidar = self._apply_yaw_rotation(rays_lidar)
 
@@ -315,12 +313,12 @@ class Go2LidarEnv(DirectRLEnv):
 
         noise = lambda t, s: (2.0 * torch.rand_like(t) - 1.0) * s * self.cfg.randomize
         
-        # x_cells = max(1, int((float(self.cfg.x_range[1]) - float(self.cfg.x_range[0])) / float(self.cfg.res)))
-        # y_cells = max(1, int((float(self.cfg.y_range[1]) - float(self.cfg.y_range[0])) / float(self.cfg.res)))
-        # height_data_print = height_data.view(self.num_envs, x_cells, y_cells).unsqueeze(1)
-        # torch.set_printoptions(precision=2, linewidth=1000, sci_mode=False)
+        x_cells = max(1, int((float(self.cfg.x_range[1]) - float(self.cfg.x_range[0])) / float(self.cfg.res)))
+        y_cells = max(1, int((float(self.cfg.y_range[1]) - float(self.cfg.y_range[0])) / float(self.cfg.res)))
+        height_data_print = height_data.view(self.num_envs, x_cells, y_cells).unsqueeze(1)
+        torch.set_printoptions(precision=2, linewidth=1000, sci_mode=False)
         
-        # print("Height Data Sample (Actor): ", height_data_print + 0.28)
+        print(height_data_print + 0.28)
         
         actor_proprio = torch.cat([
             self._robot.data.root_ang_vel_b + noise(self._robot.data.root_ang_vel_b, 0.1),
@@ -524,8 +522,8 @@ class Go2LidarEnv(DirectRLEnv):
         default_root_state = self._robot.data.default_root_state[reset_env_ids]
         default_root_state[:, :3] += self._terrain.env_origins[reset_env_ids]
         # Add x-axis offset to spawn position
-        # default_root_state[:, 0] += 1.0  # Offset in meters (change this value as needed)
-        # default_root_state[:, 1] += 1.0  # Offset in meters (change this value as needed)
+        # default_root_state[:, 0]-= 4.3  # Offset in meters (change this value as needed)
+        # default_root_state[:, 1] -= 2.0  # Offset in meters (change this value as needed)
         # # Rotate 45 degrees around z-axis at spawn
         # import math
         # angle = math.pi / 4  # 45 degrees
