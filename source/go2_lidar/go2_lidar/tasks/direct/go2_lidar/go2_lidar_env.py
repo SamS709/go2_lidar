@@ -180,8 +180,8 @@ class Go2LidarEnv(DirectRLEnv):
         
 
     def _apply_action(self):
-        self._robot.set_joint_position_target(self._processed_actions)
-        # self._robot.set_joint_position_target(self._robot.data.default_joint_pos)    
+        # self._robot.set_joint_position_target(self._processed_actions)
+        self._robot.set_joint_position_target(self._robot.data.default_joint_pos)    
         
     def _compute_height_data(self, method, randomize: bool = False):
         if method == "normal":
@@ -241,6 +241,7 @@ class Go2LidarEnv(DirectRLEnv):
             quat_conjugate(lidar_quat_w).unsqueeze(1).expand(num_envs, num_rays, 4).reshape(-1, 4),
             rays_rel_w.reshape(-1, 3),
         ).reshape(num_envs, num_rays, 3)
+        # rays_lidar = rays_rel_w
         if randomize and hasattr(self, "_rots"):
             rays_lidar = self._apply_yaw_rotation(rays_lidar)
 
@@ -278,7 +279,10 @@ class Go2LidarEnv(DirectRLEnv):
         height_map = torch.full((num_envs * num_cells,), -torch.inf, device=self.device)
         height_map.scatter_reduce_(0, flat_idx, z_vals, reduce="amax", include_self=True)
         height_map = torch.where(torch.isfinite(height_map), -height_map, torch.zeros_like(height_map))
-        height_map = height_map.flip(dims=[1]).reshape(num_envs, num_cells) - 0.28
+        # torch.set_printoptions(precision=2, linewidth=1000, sci_mode=False)
+        
+        # print(height_map + 0.28)
+        height_map = height_map.reshape(num_envs, num_cells) - 0.28
         if randomize:
             height_map = self._apply_offset(height_map)
             height_map += (2.0 * torch.rand_like(height_map) - 1.0) * float(0.01)
@@ -313,12 +317,12 @@ class Go2LidarEnv(DirectRLEnv):
 
         noise = lambda t, s: (2.0 * torch.rand_like(t) - 1.0) * s * self.cfg.randomize
         
-        # x_cells = max(1, int((float(self.cfg.x_range[1]) - float(self.cfg.x_range[0])) / float(self.cfg.res)))
-        # y_cells = max(1, int((float(self.cfg.y_range[1]) - float(self.cfg.y_range[0])) / float(self.cfg.res)))
-        # height_data_print = height_data.view(self.num_envs, x_cells, y_cells).unsqueeze(1)
-        # torch.set_printoptions(precision=2, linewidth=1000, sci_mode=False)
+        x_cells = max(1, int((float(self.cfg.x_range[1]) - float(self.cfg.x_range[0])) / float(self.cfg.res)))
+        y_cells = max(1, int((float(self.cfg.y_range[1]) - float(self.cfg.y_range[0])) / float(self.cfg.res)))
+        height_data_print = height_data.view(self.num_envs, x_cells, y_cells).flip(dims=[1]).unsqueeze(1)
+        torch.set_printoptions(precision=2, linewidth=1000, sci_mode=False)
         
-        # print(height_data_print + 0.28)
+        print(height_data_print + 0.28)
         
         actor_proprio = torch.cat([
             self._robot.data.root_ang_vel_b + noise(self._robot.data.root_ang_vel_b, 0.1),
@@ -522,8 +526,8 @@ class Go2LidarEnv(DirectRLEnv):
         default_root_state = self._robot.data.default_root_state[reset_env_ids]
         default_root_state[:, :3] += self._terrain.env_origins[reset_env_ids]
         # Add x-axis offset to spawn position
-        # default_root_state[:, 0]-= 4.3  # Offset in meters (change this value as needed)
-        # default_root_state[:, 1] -= 2.0  # Offset in meters (change this value as needed)
+        default_root_state[:, 0]-= 4.2  # Offset in meters (change this value as needed)
+        default_root_state[:, 1] -= 3.5  # Offset in meters (change this value as needed)
         # # Rotate 45 degrees around z-axis at spawn
         # import math
         # angle = math.pi / 4  # 45 degrees

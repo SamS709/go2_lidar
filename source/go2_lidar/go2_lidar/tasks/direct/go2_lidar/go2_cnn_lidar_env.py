@@ -45,13 +45,14 @@ class Go2LidarCNNEnv(Go2LidarEnv):
         height_data_actor = self._compute_height_data_from_cloud(randomize=self.cfg.randomize)
         height_data = self._sanitize_tensor(height_data, "height_data", clamp_abs=10.0)
         height_data_actor = self._sanitize_tensor(height_data_actor, "height_data_actor", clamp_abs=10.0)
-        height_data = height_data.view(self.num_envs, x_cells, y_cells).unsqueeze(1)
-        height_data_actor = height_data_actor.view(self.num_envs, x_cells, y_cells).unsqueeze(1)
+        height_data = height_data.view(self.num_envs, x_cells, y_cells).flip(dims=[1]).unsqueeze(1)
+        height_data_actor = height_data_actor.view(self.num_envs, x_cells, y_cells).flip(dims=[1]).unsqueeze(1)
         # torch.set_printoptions(precision=2, linewidth=1000, sci_mode=False)
         # print(self._rots)
         # print(self._offsets)
         # print(self.reset_zeros_freq)
-        # print("Height Data Sample (Actor): ", height_data_actor)
+        # print(height_data + 0.28)
+        # print(height_data_actor + 0.28)
         
 
         # Actor (student) proprio observations — limited/noisy proprio inputs used by policy.
