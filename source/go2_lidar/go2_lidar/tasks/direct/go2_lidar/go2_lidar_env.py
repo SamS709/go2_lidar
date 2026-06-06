@@ -187,13 +187,13 @@ class Go2LidarEnv(DirectRLEnv):
     def _compute_height_data(self, method, randomize: bool = False):
         if method == "normal":
             height_data = (
-                self._height_scanner.data.pos_w[:, 2].unsqueeze(1) - self._height_scanner.data.ray_hits_w[..., 2] - 0.28
+                self._height_scanner.data.pos_w[:, 2].unsqueeze(1) - self._height_scanner.data.ray_hits_w[..., 2] - self.cfg.desired_base_height
             ).clip(-1.0, 1.0) 
             if randomize and hasattr(self, "_rots"):
                 ray_hits_w = self._height_scanner.data.ray_hits_w
                 ray_hits_rel = ray_hits_w - self._height_scanner.data.pos_w.unsqueeze(1)
                 ray_hits_rel = self._apply_yaw_rotation(ray_hits_rel)
-                height_data = (self._height_scanner.data.pos_w[:, 2].unsqueeze(1) - ray_hits_rel[..., 2] - 0.28).clip(-1.0, 1.0)
+                height_data = (self._height_scanner.data.pos_w[:, 2].unsqueeze(1) - ray_hits_rel[..., 2] - self.cfg.desired_base_height).clip(-1.0, 1.0)
                 height_data = self._apply_offset(height_data)  
                 height_data += (2.0 * torch.rand_like(height_data) - 1.0) * float(0.01)
                 height_data = self._zero_heightmap_cells(height_data)       
@@ -223,7 +223,7 @@ class Go2LidarEnv(DirectRLEnv):
                 hits_in_base = self._apply_yaw_rotation(hits_in_base)
 
             # 3. The height in the base frame is the Z component (negative = below robot)
-            height_data = -hits_in_base[..., 2] - 0.28
+            height_data = -hits_in_base[..., 2] - self.cfg.desired_base_height
             if randomize:
                 height_data = self._apply_offset(height_data)
                 height_data += (2.0 * torch.rand_like(height_data) - 1.0) * float(0.01)
@@ -282,8 +282,8 @@ class Go2LidarEnv(DirectRLEnv):
         height_map = torch.where(torch.isfinite(height_map), -height_map, torch.zeros_like(height_map))
         # torch.set_printoptions(precision=2, linewidth=1000, sci_mode=False)
         
-        # print(height_map + 0.28)
-        height_map = height_map.reshape(num_envs, num_cells) - 0.28
+        # print(height_map + self.cfg.desired_base_height)
+        height_map = height_map.reshape(num_envs, num_cells) - self.cfg.desired_base_height
         if randomize:
             height_map = self._apply_offset(height_map)
             height_map += (2.0 * torch.rand_like(height_map) - 1.0) * float(0.01)
@@ -318,12 +318,12 @@ class Go2LidarEnv(DirectRLEnv):
 
         noise = lambda t, s: (2.0 * torch.rand_like(t) - 1.0) * s * self.cfg.randomize
         
-        x_cells = max(1, int((float(self.cfg.x_range[1]) - float(self.cfg.x_range[0])) / float(self.cfg.res)))
-        y_cells = max(1, int((float(self.cfg.y_range[1]) - float(self.cfg.y_range[0])) / float(self.cfg.res)))
-        height_data_print = height_data.view(self.num_envs, x_cells, y_cells).flip(dims=[1]).unsqueeze(1)
-        torch.set_printoptions(precision=2, linewidth=1000, sci_mode=False)
+        # x_cells = max(1, int((float(self.cfg.x_range[1]) - float(self.cfg.x_range[0])) / float(self.cfg.res)))
+        # y_cells = max(1, int((float(self.cfg.y_range[1]) - float(self.cfg.y_range[0])) / float(self.cfg.res)))
+        # height_data_print = height_data.view(self.num_envs, x_cells, y_cells).flip(dims=[1]).unsqueeze(1)
+        # torch.set_printoptions(precision=2, linewidth=1000, sci_mode=False)
         
-        print(height_data_print + 0.28)
+        # print(height_data_print + self.cfg.desired_base_height)
         
         actor_proprio = torch.cat([
             self._robot.data.root_ang_vel_b + noise(self._robot.data.root_ang_vel_b, 0.1),
