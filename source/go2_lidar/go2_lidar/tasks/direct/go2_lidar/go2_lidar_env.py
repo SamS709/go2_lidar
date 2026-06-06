@@ -65,7 +65,8 @@ class Go2LidarEnv(DirectRLEnv):
                 # "flat_orientation_l2",
                 "def_pos",
                 "feet_to_hip",
-                "feet_vertical_surface"
+                "feet_grounded_stop",
+                # "feet_vertical_surface"
             ]
         }
         # Get specific body indices
@@ -428,7 +429,17 @@ class Go2LidarEnv(DirectRLEnv):
             ((~foot_contact[:, 1]) & (~foot_contact[:, 3]))    # FR+RR = pace right
         ).float()
         # --- only reward when actually moving ---
-        gait = (trot_pattern - 0.5 * wrong_pair ).clamp(min=0.0) * should_move      
+        gait = (trot_pattern - 0.5 * wrong_pair ).clamp(min=0.0) * should_move
+        
+        all_feet_grounded = (
+            foot_contact[:, 0] &  # FL
+            foot_contact[:, 1] &  # FR
+            foot_contact[:, 2] &  # RL
+            foot_contact[:, 3]    # RR
+        ).float()  # [N]
+
+        # only reward when the robot should NOT be moving
+        feet_ground_stop = all_feet_grounded * (~should_move).float()      
 
         # feet dist
         # f_dist_squarred = torch.sum(torch.square(self._robot.data.body_pos_w[:,self._feet_ids[0],:2]-self._robot.data.body_pos_w[:,self._feet_ids[1],:2]), dim = 1)
@@ -449,10 +460,10 @@ class Go2LidarEnv(DirectRLEnv):
         joint_deviation = torch.sum(torch.square(self._robot.data.joint_pos - self._robot.data.default_joint_pos), dim=1)
         def_pos = torch.where(should_move, joint_deviation, self.cfg.stand_still_scale * joint_deviation)
 
-        forces_z = torch.abs(self._contact_sensor.data.net_forces_w[:, self._feet_ids_sensor, 2])
-        forces_xy = torch.linalg.norm(self._contact_sensor.data.net_forces_w[:, self._feet_ids_sensor, :2], dim=2)
-        feet_vertical_surface_contacts = torch.any(forces_xy > 4 * forces_z, dim=1).float()
-        feet_vertical_surface_contacts *= torch.clamp(-self._robot.data.projected_gravity_b[:, 2], 0, 0.7) / 0.7
+        # forces_z = torch.abs(self._contact_sensor.data.net_forces_w[:, self._feet_ids_sensor, 2])
+        # forces_xy = torch.linalg.norm(self._contact_sensor.data.net_forces_w[:, self._feet_ids_sensor, :2], dim=2)
+        # feet_vertical_surface_contacts = torch.any(forces_xy > 4 * forces_z, dim=1).float()
+        # feet_vertical_surface_contacts *= torch.clamp(-self._robot.data.projected_gravity_b[:, 2], 0, 0.7) / 0.7
         
         # feet to hip distance --------------------------------------------------------------------------------
         
@@ -492,7 +503,8 @@ class Go2LidarEnv(DirectRLEnv):
             # "flat_orientation_l2": flat_orientation * self.cfg.flat_orientation_reward_scale * self.step_dt,
             "def_pos" : def_pos * self.cfg.def_pos_reward_scale * self.step_dt,
             "feet_to_hip" : feet_to_hip_distance * self.cfg.feet_to_hip_reward_scale * self.step_dt,
-            "feet_vertical_surface" : feet_vertical_surface_contacts * self.cfg.feet_vertical_surface_contacts_reward_scale * self.step_dt
+            "feet_grounded_stop": feet_ground_stop * self.cfg.feet_grounded_scale * self.step_dt,
+            # "feet_vertical_surface" : feet_vertical_surface_contacts * self.cfg.feet_vertical_surface_contacts_reward_scale * self.step_dt
         }
         reward = torch.sum(torch.stack(list(rewards.values())), dim=0)
         reward = self._sanitize_tensor(reward, "reward", clamp_abs=100.0)
