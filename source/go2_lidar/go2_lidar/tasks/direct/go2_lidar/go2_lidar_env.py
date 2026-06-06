@@ -180,8 +180,8 @@ class Go2LidarEnv(DirectRLEnv):
         
 
     def _apply_action(self):
-        # self._robot.set_joint_position_target(self._processed_actions)
-        self._robot.set_joint_position_target(self._robot.data.default_joint_pos)    
+        self._robot.set_joint_position_target(self._processed_actions)
+        # self._robot.set_joint_position_target(self._robot.data.default_joint_pos)    
         
     def _compute_height_data(self, method, randomize: bool = False):
         if method == "normal":
@@ -526,8 +526,8 @@ class Go2LidarEnv(DirectRLEnv):
         default_root_state = self._robot.data.default_root_state[reset_env_ids]
         default_root_state[:, :3] += self._terrain.env_origins[reset_env_ids]
         # Add x-axis offset to spawn position
-        default_root_state[:, 0]-= 4.2  # Offset in meters (change this value as needed)
-        default_root_state[:, 1] -= 3.5  # Offset in meters (change this value as needed)
+        # default_root_state[:, 0]-= 4.2  # Offset in meters (change this value as needed)
+        # default_root_state[:, 1] -= 3.5  # Offset in meters (change this value as needed)
         # # Rotate 45 degrees around z-axis at spawn
         # import math
         # angle = math.pi / 4  # 45 degrees
