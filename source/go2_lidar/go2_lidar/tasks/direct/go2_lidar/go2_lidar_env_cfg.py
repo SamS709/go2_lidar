@@ -224,9 +224,12 @@ class Go2LidarFlatEnvCfg(DirectRLEnvCfg):
     clamp_actions = False
     desired_clip_actions = 3.0
     filter_actions = False
+    
+    desired_base_height = 0.30
 
     # reward scales
     lin_vel_reward_scale = 2.0
+    height_reward_scale = 1.0
     yaw_rate_reward_scale = 0.5
     z_vel_reward_scale = -1.0
     ang_vel_reward_scale = -0.15
@@ -403,8 +406,8 @@ class Go2LidarRoughEnvCfg(Go2LidarFlatEnvCfg):
     sigma = 4.00
     n_zeros = 20
     max_reset_zeros_freq = 8
-    max_rot = 5.0
-    max_offset = 0.07
+    max_rot = 4.0
+    max_offset = 0.05
     
     # the heightmap is 1.5 * 1, offseted by lidar offset + 0.25 on x such that it detects 1 metter in front of and 0.5 meters behind the lidar frame
     # on the real robot, from the lidar frame: grid 0.5 meters left and right and 1 meter front and 0.5 meters behind
