@@ -243,7 +243,7 @@ class Go2LidarFlatEnvCfg(DirectRLEnvCfg):
     feet_grounded_scale = 1.0
     gait_reward_scale = feet_air_time_reward_scale / 2.0
     undesired_contact_reward_scale = -1.0 * 0.0
-    flat_orientation_reward_scale = 0.0
+    flat_orientation_reward_scale = -2.5
     feet_vertical_surface_contacts_reward_scale = -0.25
     velocity_threshold = 0.03
     def_pos_reward_scale = -0.005
@@ -279,7 +279,7 @@ class Go2LidarRoughEnvCfg(Go2LidarFlatEnvCfg):
         use_cache=False,
         sub_terrains={
             "flat": terrain_gen.MeshPlaneTerrainCfg(
-                proportion=0.2
+                proportion=0.1
                 # proportion=0.0
             ),
             "boxes": terrain_gen.MeshRandomGridTerrainCfg(
@@ -311,13 +311,13 @@ class Go2LidarRoughEnvCfg(Go2LidarFlatEnvCfg):
                 slope_range=(0.2, 0.4), platform_width=2.0, border_width=0.25
             ),
             "pyramid_stairs": terrain_gen.MeshPyramidStairsTerrainCfg(
-                proportion=0.15,
+                proportion=0.2,
                 # proportion=0.0,
                 step_height_range=(0.05, 0.25), step_width=0.3,
                 platform_width=3.0, border_width=1.0, holes=False,
             ),
             "pyramid_stairs_inv": terrain_gen.MeshInvertedPyramidStairsTerrainCfg(
-                proportion=0.15, 
+                proportion=0.2, 
                 # proportion=1.0,
                 step_height_range=(0.05, 0.25), step_width=0.3,
                 platform_width=3.0, border_width=1.0, holes=False,

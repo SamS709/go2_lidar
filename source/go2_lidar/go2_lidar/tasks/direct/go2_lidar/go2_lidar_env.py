@@ -62,7 +62,7 @@ class Go2LidarEnv(DirectRLEnv):
                 "feet_gait",
                 # "feet_dist",
                 # "undesired_contacts",
-                # "flat_orientation_l2",
+                "flat_orientation_l2",
                 "def_pos",
                 "feet_to_hip",
                 "feet_grounded_stop",
@@ -475,7 +475,8 @@ class Go2LidarEnv(DirectRLEnv):
         
         # flat 
         flat_orientation = torch.sum(torch.square(self._robot.data.projected_gravity_b[:, :2]), dim=1) 
-        types  = self._terrain.terrain_types 
+        stay_flat_mask = ~self.is_on_terrain(["pyramid_stairs", "pyramid_stairs_inv"])
+        flat_orientation_terrain = stay_flat_mask.float() * flat_orientation
         
         stay_flat_mask = ~self.is_on_terrain(["pyramid_stairs", "pyramid_stairs_inv"])
         print(stay_flat_mask)
@@ -533,7 +534,7 @@ class Go2LidarEnv(DirectRLEnv):
             "feet_gait": gait * self.cfg.gait_reward_scale * self.step_dt,
             # "feet_dist": feet_dist_error * self.cfg.feet_dist_reward_scale * self.step_dt,
             # "undesired_contacts": contacts * self.cfg.undesired_contact_reward_scale * self.step_dt,
-            # "flat_orientation_l2": flat_orientation * self.cfg.flat_orientation_reward_scale * self.step_dt,
+            "flat_orientation_l2": flat_orientation_terrain * self.cfg.flat_orientation_reward_scale * self.step_dt,
             "def_pos" : def_pos * self.cfg.def_pos_reward_scale * self.step_dt,
             "feet_to_hip" : feet_to_hip_distance * self.cfg.feet_to_hip_reward_scale * self.step_dt,
             "feet_grounded_stop": feet_ground_stop * self.cfg.feet_grounded_scale * self.step_dt,
