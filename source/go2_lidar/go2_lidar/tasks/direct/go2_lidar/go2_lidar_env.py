@@ -86,7 +86,25 @@ class Go2LidarEnv(DirectRLEnv):
         self._body_contact_info_teacher_sensor = self._base_id_sensor + self._thigh_ids_sensor + self._calf_ids_sensor
         self._finite_warn_counter = 0
         
-        
+    def build_col_to_subterrain(self):
+        num_cols = self._terrain.cfg.terrain_generator.num_cols
+        col_to_name = {}
+        col = 0
+        for name, sub_cfg in self._terrain.cfg.terrain_generator.sub_terrains.items():
+            n_cols = round(sub_cfg.proportion * num_cols)
+            for _ in range(n_cols):
+                if col < num_cols:
+                    col_to_name[col] = name
+                col += 1
+        return col_to_name
+    
+    def build_terrain_mask(self):
+        for terrain_name in self._terrain.cfg.terrain_generator.sub_terrains.keys():
+            col_to_bool = torch.zeros(self._terrain.cfg.terrain_generator.num_cols, dtype=torch.bool, device=self._terrain.device)
+            for col, name in self.build_col_to_subterrain().items():
+                col_to_bool[col] = (name == terrain_name)
+            # Index by terrain_types once — this never changes
+            self._terrain_masks[terrain_name] = col_to_bool[self._terrain.terrain_types]
 
     def _sanitize_tensor(self, tensor: torch.Tensor, name: str, clamp_abs: float | None = None) -> torch.Tensor:
         """Replace non-finite values and optionally clamp to avoid destabilizing PPO updates."""
@@ -156,6 +174,9 @@ class Go2LidarEnv(DirectRLEnv):
         self.cfg.terrain.num_envs = self.scene.cfg.num_envs
         self.cfg.terrain.env_spacing = self.scene.cfg.env_spacing
         self._terrain = self.cfg.terrain.class_type(self.cfg.terrain)
+        self._subterrain_names = list(self._terrain.cfg.terrain_generator.sub_terrains.keys())
+        self._terrain_masks = {}
+        self.build_terrain_mask()
         # clone and replicate
         self.scene.clone_environments(copy_from_source=False)
         # we need to explicitly filter collisions for CPU simulation
@@ -310,6 +331,12 @@ class Go2LidarEnv(DirectRLEnv):
         height_map_actor[:, self.sampled_indices] = 0.0
         return height_map_actor
     
+    def is_on_terrain(self, terrain_names: list[str]) -> torch.Tensor:
+        mask = torch.zeros(self.num_envs, dtype=torch.bool, device=self.device)
+        for name in terrain_names:
+            mask |= self._terrain_masks[name]
+        return mask
+    
     def _get_observations(self) -> dict:
         
         height_data = self._compute_height_data_from_cloud(randomize=False)
@@ -446,6 +473,12 @@ class Go2LidarEnv(DirectRLEnv):
         # r_dist_squarred = torch.sum(torch.square(self._robot.data.body_pos_w[:,self._feet_ids[2],:2]-self._robot.data.body_pos_w[:,self._feet_ids[3],:2]), dim = 1)
         # feet_dist_error = torch.min((f_dist_squarred - self.cfg.feet_dist_threshold**2) + (r_dist_squarred - self.cfg.feet_dist_threshold**2), torch.zeros(self.num_envs,device=self.device))
         
+        # flat 
+        flat_orientation = torch.sum(torch.square(self._robot.data.projected_gravity_b[:, :2]), dim=1) 
+        types  = self._terrain.terrain_types 
+        
+        stay_flat_mask = ~self.is_on_terrain(["pyramid_stairs", "pyramid_stairs_inv"])
+        print(stay_flat_mask)
 
         # undesired contacts
         # is_contact = (
