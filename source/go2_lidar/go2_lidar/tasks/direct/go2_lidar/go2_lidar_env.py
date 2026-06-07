@@ -477,10 +477,7 @@ class Go2LidarEnv(DirectRLEnv):
         flat_orientation = torch.sum(torch.square(self._robot.data.projected_gravity_b[:, :2]), dim=1) 
         stay_flat_mask = ~self.is_on_terrain(["pyramid_stairs", "pyramid_stairs_inv"])
         flat_orientation_terrain = stay_flat_mask.float() * flat_orientation
-        
-        stay_flat_mask = ~self.is_on_terrain(["pyramid_stairs", "pyramid_stairs_inv"])
-        print(stay_flat_mask)
-
+    
         # undesired contacts
         # is_contact = (
         #     torch.max(torch.norm(self._contact_sensor.data.net_forces_w_history[:, :, self._undesired_contact_body_ids], dim=-1), dim=1)[0] > 1.0
