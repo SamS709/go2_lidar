@@ -13,9 +13,9 @@
 
 cd /mnt/D/dev/robotics/nvidia/isaaclab/go2_lidar
 python scripts/rsl_rl/play.py \
-  --task Isaac-Velocity-Rough-Go2-RNN-Lidar-Direct-v0 \
+  --task Isaac-Velocity-Rough-Go2-CNN-Lidar-Direct-v0 \
   --num_envs 512 \
-  --checkpoint /mnt/D/dev/robotics/nvidia/isaaclab/logs/go2_lidar_rnn/2026-05-27_14-16-09/model_49999.pt
+  --checkpoint /mnt/D/dev/robotics/nvidia/isaaclab/logs/go2_lidar_cnn/2026-05-27_14-16-09/model_49999.pt
 """
 
 import argparse
