@@ -225,7 +225,7 @@ class Go2LidarFlatEnvCfg(DirectRLEnvCfg):
     desired_clip_actions = 3.0
     filter_actions = False
     
-    desired_base_height = 0.30
+    desired_base_height = 0.28
 
     # reward scales
     lin_vel_reward_scale = 2.0
@@ -241,15 +241,15 @@ class Go2LidarFlatEnvCfg(DirectRLEnvCfg):
     
     feet_air_time_reward_scale = 0.01
     feet_grounded_scale = 1.0
-    gait_reward_scale = feet_air_time_reward_scale / 2.0
-    undesired_contact_reward_scale = -1.0 * 0.0
+    gait_reward_scale = feet_air_time_reward_scale / 20.0
+    undesired_contact_reward_scale = -1.0 
     flat_orientation_reward_scale = -2.5
     feet_vertical_surface_contacts_reward_scale = -0.25
     velocity_threshold = 0.03
-    def_pos_reward_scale = -0.005
-    stand_still_scale = 10.0
+    def_pos_reward_scale = -0.05
+    stand_still_scale = 100.0
     
-    feet_to_hip_reward_scale = 1.5
+    feet_to_hip_reward_scale = 1.0
     desired_hip_offset = 0.095
     
     # feet distance

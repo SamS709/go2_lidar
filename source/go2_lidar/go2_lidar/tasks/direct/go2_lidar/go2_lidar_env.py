@@ -61,12 +61,12 @@ class Go2LidarEnv(DirectRLEnv):
                 "feet_air_time",
                 "feet_gait",
                 # "feet_dist",
-                # "undesired_contacts",
+                "undesired_contacts",
                 "flat_orientation_l2",
                 "def_pos",
                 "feet_to_hip",
                 "feet_grounded_stop",
-                # "feet_vertical_surface"
+                "feet_vertical_surface"
             ]
         }
         # Get specific body indices
@@ -82,7 +82,7 @@ class Go2LidarEnv(DirectRLEnv):
         self._hip_ids, _ = self._robot.find_bodies(".*_hip")
         self._calf_ids, _ = self._robot.find_bodies(".*_calf")
         
-        self._undesired_contact_body_ids_sensor = self._thigh_ids_sensor
+        self._undesired_contact_body_ids_sensor = self._thigh_ids_sensor + self._hip_ids_sensor + self._base_id_sensor
         self._body_contact_info_teacher_sensor = self._base_id_sensor + self._thigh_ids_sensor + self._calf_ids_sensor
         self._finite_warn_counter = 0
         
@@ -432,7 +432,7 @@ class Go2LidarEnv(DirectRLEnv):
         
         # useful for next two rewards:
         cmd = torch.linalg.norm(self.command_manager.get_command("base_velocity"), dim=1)
-        should_move = cmd > 0.01 
+        should_move = cmd > 0.01
 
         # gait trot
         foot_contact = torch.norm(self._contact_sensor.data.net_forces_w[:, self._feet_ids_sensor], dim=-1) > 1.0
@@ -479,10 +479,10 @@ class Go2LidarEnv(DirectRLEnv):
         flat_orientation_terrain = stay_flat_mask.float() * flat_orientation
     
         # undesired contacts
-        # is_contact = (
-        #     torch.max(torch.norm(self._contact_sensor.data.net_forces_w_history[:, :, self._undesired_contact_body_ids], dim=-1), dim=1)[0] > 1.0
-        # )
-        # contacts = torch.sum(is_contact, dim=1)
+        is_contact = (
+            torch.max(torch.norm(self._contact_sensor.data.net_forces_w_history[:, :, self._undesired_contact_body_ids_sensor], dim=-1), dim=1)[0] > 1.0
+        )
+        contacts = torch.sum(is_contact, dim=1)
         
         # flat orientation
         # flat_orientation = torch.sum(torch.square(self._robot.data.projected_gravity_b[:, :2]), dim=1)
@@ -491,10 +491,10 @@ class Go2LidarEnv(DirectRLEnv):
         joint_deviation = torch.sum(torch.square(self._robot.data.joint_pos - self._robot.data.default_joint_pos), dim=1)
         def_pos = torch.where(should_move, joint_deviation, self.cfg.stand_still_scale * joint_deviation)
 
-        # forces_z = torch.abs(self._contact_sensor.data.net_forces_w[:, self._feet_ids_sensor, 2])
-        # forces_xy = torch.linalg.norm(self._contact_sensor.data.net_forces_w[:, self._feet_ids_sensor, :2], dim=2)
-        # feet_vertical_surface_contacts = torch.any(forces_xy > 4 * forces_z, dim=1).float()
-        # feet_vertical_surface_contacts *= torch.clamp(-self._robot.data.projected_gravity_b[:, 2], 0, 0.7) / 0.7
+        forces_z = torch.abs(self._contact_sensor.data.net_forces_w[:, self._feet_ids_sensor, 2])
+        forces_xy = torch.linalg.norm(self._contact_sensor.data.net_forces_w[:, self._feet_ids_sensor, :2], dim=2)
+        feet_vertical_surface_contacts = torch.any(forces_xy > 4 * forces_z, dim=1).float()
+        feet_vertical_surface_contacts *= torch.clamp(-self._robot.data.projected_gravity_b[:, 2], 0, 0.7) / 0.7
         
         # feet to hip distance --------------------------------------------------------------------------------
         
@@ -530,12 +530,12 @@ class Go2LidarEnv(DirectRLEnv):
             "feet_air_time": air_time * self.cfg.feet_air_time_reward_scale * self.step_dt,
             "feet_gait": gait * self.cfg.gait_reward_scale * self.step_dt,
             # "feet_dist": feet_dist_error * self.cfg.feet_dist_reward_scale * self.step_dt,
-            # "undesired_contacts": contacts * self.cfg.undesired_contact_reward_scale * self.step_dt,
+            "undesired_contacts": contacts * self.cfg.undesired_contact_reward_scale * self.step_dt,
             "flat_orientation_l2": flat_orientation_terrain * self.cfg.flat_orientation_reward_scale * self.step_dt,
             "def_pos" : def_pos * self.cfg.def_pos_reward_scale * self.step_dt,
             "feet_to_hip" : feet_to_hip_distance * self.cfg.feet_to_hip_reward_scale * self.step_dt,
             "feet_grounded_stop": feet_ground_stop * self.cfg.feet_grounded_scale * self.step_dt,
-            # "feet_vertical_surface" : feet_vertical_surface_contacts * self.cfg.feet_vertical_surface_contacts_reward_scale * self.step_dt
+            "feet_vertical_surface" : feet_vertical_surface_contacts * self.cfg.feet_vertical_surface_contacts_reward_scale * self.step_dt
         }
         reward = torch.sum(torch.stack(list(rewards.values())), dim=0)
         reward = self._sanitize_tensor(reward, "reward", clamp_abs=100.0)
