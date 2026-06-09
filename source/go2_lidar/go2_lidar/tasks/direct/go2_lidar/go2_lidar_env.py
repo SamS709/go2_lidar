@@ -396,6 +396,7 @@ class Go2LidarEnv(DirectRLEnv):
 
     def _get_rewards(self) -> torch.Tensor:
         # linear velocity tracking
+        terrain_mask = ~self.is_on_terrain(["pyramid_stairs", "pyramid_stairs_inv"]).float()
         lin_vel_error = torch.sum(torch.square(self.command_manager.get_command("base_velocity")[:, :2] - self._robot.data.root_lin_vel_b[:, :2]), dim=1)
         lin_vel_error_mapped = torch.exp(-lin_vel_error / 0.25)
         # yaw rate tracking
@@ -407,7 +408,7 @@ class Go2LidarEnv(DirectRLEnv):
         height_data_scanner = torch.clip(height_data_scanner, min=-5, max=5) # Handle inf values
         mean_height_ray = torch.mean(height_data_scanner, dim=1)
         height_error = torch.square(self.cfg.desired_base_height + mean_height_ray - self._robot.data.root_state_w[:, 2])
-        height_error_mapped = torch.exp(-height_error / 0.01)
+        height_error_mapped = torch.exp(-height_error / 0.01) * terrain_mask
         
         # z velocity tracking
         z_vel_error = torch.square(self._robot.data.root_lin_vel_b[:, 2])
@@ -466,7 +467,7 @@ class Go2LidarEnv(DirectRLEnv):
         ).float()  # [N]
 
         # only reward when the robot should NOT be moving
-        feet_ground_stop = all_feet_grounded * (~should_move).float()      
+        feet_ground_stop = all_feet_grounded * (~should_move).float() * terrain_mask      
 
         # feet dist
         # f_dist_squarred = torch.sum(torch.square(self._robot.data.body_pos_w[:,self._feet_ids[0],:2]-self._robot.data.body_pos_w[:,self._feet_ids[1],:2]), dim = 1)
@@ -475,8 +476,7 @@ class Go2LidarEnv(DirectRLEnv):
         
         # flat 
         flat_orientation = torch.sum(torch.square(self._robot.data.projected_gravity_b[:, :2]), dim=1) 
-        stay_flat_mask = ~self.is_on_terrain(["pyramid_stairs", "pyramid_stairs_inv"])
-        flat_orientation_terrain = stay_flat_mask.float() * flat_orientation
+        flat_orientation_terrain = terrain_mask * flat_orientation
     
         # undesired contacts
         is_contact = (
@@ -489,7 +489,7 @@ class Go2LidarEnv(DirectRLEnv):
         
         # stay around default pos:        
         joint_deviation = torch.sum(torch.square(self._robot.data.joint_pos - self._robot.data.default_joint_pos), dim=1)
-        def_pos = torch.where(should_move, joint_deviation, self.cfg.stand_still_scale * joint_deviation)
+        def_pos = torch.where(should_move, joint_deviation, self.cfg.stand_still_scale * joint_deviation) * terrain_mask
 
         forces_z = torch.abs(self._contact_sensor.data.net_forces_w[:, self._feet_ids_sensor, 2])
         forces_xy = torch.linalg.norm(self._contact_sensor.data.net_forces_w[:, self._feet_ids_sensor, :2], dim=2)
