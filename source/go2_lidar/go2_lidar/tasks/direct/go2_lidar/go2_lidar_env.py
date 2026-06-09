@@ -396,7 +396,7 @@ class Go2LidarEnv(DirectRLEnv):
 
     def _get_rewards(self) -> torch.Tensor:
         # linear velocity tracking
-        terrain_mask = ~self.is_on_terrain(["pyramid_stairs", "pyramid_stairs_inv"]).float()
+        terrain_mask = (~self.is_on_terrain(["pyramid_stairs", "pyramid_stairs_inv"])).float()
         lin_vel_error = torch.sum(torch.square(self.command_manager.get_command("base_velocity")[:, :2] - self._robot.data.root_lin_vel_b[:, :2]), dim=1)
         lin_vel_error_mapped = torch.exp(-lin_vel_error / 0.25)
         # yaw rate tracking
