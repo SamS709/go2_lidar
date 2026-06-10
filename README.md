@@ -67,7 +67,7 @@ Make sure you are in your the classic Isaac Lab Python environment (not the Newt
     python scripts/rsl_rl/play.py --task Isaac-Velocity-Rough-Go2-CNN-Lidar-Direct-v0 --num_envs 512
     ```
 
-<img src="/images/robot_rough_vis_cmd.png" alt="Sim to real deployement" width="200" />
+<img src="/images/robot_rough_vis_cmd.png" alt="Sim to real deployement" width="400" />
 
 ## 2) Sim2Sim
 
@@ -88,14 +88,26 @@ Using HURO repository from the HUCEBOT team at INRIA.
 
 See the instructions given [here](https://github.com/hucebot/huro/tree/sami).
 
-<img src="/images/sim2real_rough2.png" alt="Sim to real deployement" width="200" />
+<img src="/images/sim2real_rough2.png" alt="Sim to real deployement" width="400" />
 
 
 ## 4)  How does it work ?
 
+### Rewards
+
 See the used rewards at To see how the lidar observations are computed, go to [go2_lidar_env.py](source/go2_lidar/go2_lidar/tasks/direct/go2_lidar/go2_lidar_env.py). 
+
+### Neural network
 
 Here is the choosen structure for the neural net (A benchmarsk has been done resulting in the following classification: MLP < RNN< CNN)
 
-<img src="/images/neural_net.png" alt="Neural network" width="200" />
+<img src="/images/neural_net.png" alt="Neural network" width="300" />
 
+### Lidar & Heightmap
+
+How is the heightmap computed ?
+
+
+To make the policy more robust and the lidar heighmap consistent with the real lidar observations, the follwing operations are applied to the heightmap:
+
+<img src="/images/heightmap_transformations.png" alt="Neural network" width="400" />
