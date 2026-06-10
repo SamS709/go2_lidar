@@ -52,7 +52,6 @@ The goal of this repo is to add the lidar of the go2 as a perception module so t
 
 ## 1) Training
 
-To see how the lidar observations are computed, go to [lidar_info.md](lidar_info.md).
 
 ### Train
 
