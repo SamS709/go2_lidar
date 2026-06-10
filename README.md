@@ -6,8 +6,8 @@
 
 # Lidar integration [BETA]
 
-<img src="/images/gazebo_lidar_rl_compressed.gif" alt="Gazebo lidar RL demo" width="400" />
-<img src="/images/sim2real_rough2.png" alt="Sim to real deployement" width="400" />
+<img src="/images/gazebo_lidar_rl_compressed.gif" alt="Gazebo lidar RL demo" width="200" />
+<img src="/images/sim2real_rough2.png" alt="Sim to real deployement" width="200" />
 
 ## Overview
 
@@ -67,7 +67,7 @@ Make sure you are in your the classic Isaac Lab Python environment (not the Newt
     python scripts/rsl_rl/play.py --task Isaac-Velocity-Rough-Go2-CNN-Lidar-Direct-v0 --num_envs 512
     ```
 
-<img src="/images/robot_rough_vis_cmd.png" alt="Sim to real deployement" width="800" />
+<img src="/images/robot_rough_vis_cmd.png" alt="Sim to real deployement" width="200" />
 
 ## 2) Sim2Sim
 
@@ -80,7 +80,7 @@ The result without navigation (velocities sent with joystick):
 
 The result with navigation for the moment: 
 
-<img src="/images/gazebo_lidar_rl_compressed.gif" alt="Gazebo lidar RL demo" width="800" />
+<img src="/images/gazebo_lidar_rl_compressed.gif" alt="Gazebo lidar RL demo" width="400" />
 
 ## 3) Sim2Real
 
@@ -88,7 +88,7 @@ Using HURO repository from the HUCEBOT team at INRIA.
 
 See the instructions given [here](https://github.com/hucebot/huro/tree/sami).
 
-<img src="/images/sim2real_rough2.png" alt="Sim to real deployement" width="800" />
+<img src="/images/sim2real_rough2.png" alt="Sim to real deployement" width="200" />
 
 
 ## 4)  How does it work ?
@@ -97,5 +97,5 @@ See the used rewards at To see how the lidar observations are computed, go to [g
 
 Here is the choosen structure for the neural net (A benchmarsk has been done resulting in the following classification: MLP < RNN< CNN)
 
-<img src="/images/neural_net.png" alt="Neural network" width="800" />
+<img src="/images/neural_net.png" alt="Neural network" width="200" />
 
