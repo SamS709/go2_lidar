@@ -6,8 +6,10 @@
 
 # Lidar integration [BETA]
 
+<p align="center">
 <img src="/images/gazebo_lidar_rl_compressed.gif" alt="Gazebo lidar RL demo" width="200" />
 <img src="/images/sim2real_rough2.png" alt="Sim to real deployement" width="200" />
+</p>
 
 ## Overview
 
