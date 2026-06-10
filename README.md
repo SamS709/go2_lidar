@@ -7,7 +7,7 @@
 # Lidar integration [BETA]
 
 <img src="/images/gazebo_lidar_rl_compressed.gif" alt="Gazebo lidar RL demo" width="400" />
-
+<img src="/images/sim2real_rough2.png" alt="Sim to real deployement" width="400" />
 
 ## Overview
 
@@ -20,9 +20,11 @@ The goal of this repo is to add the lidar of the go2 as a perception module so t
 1) [**Training**](#1-training)
     - A policy for go2 robot using direct based environnement. The policy follows the commands sent by the user: linear (x/y) velocitiezs // angular (z) velocity // base height.
 2) [**Sim2Sim**](#2-sim2sim)
-    - Sim2Sim in Huro environment (github of a researcher at LORIA).
+    - Sim2Sim in Huro environment (GitHub of the HUCEBOT team at LORIA).
 3) [**Sim2Real**](#3-sim2real)
-    - Sim2Real in huro using ros2.
+    - Sim2Real in Huro using ros2.
+4) [**How does it work ?**](#4-howDoesItWork)
+    - Sim2Real in Huro using ros2.
 
 
 ## Installation
@@ -42,48 +44,6 @@ The goal of this repo is to add the lidar of the go2 as a perception module so t
     python -m pip install -e source/go2_lidar
     ```
 
-## Docker
-
-All Docker files live in [docker/](docker). Use the scripts from there:
-
-```bash
-cd docker
-./build.sh
-./run.sh
-```
-
-`build.sh` builds the project image from `nvidia/cuda:12.9.2-cudnn-devel-ubuntu22.04`. `run.sh` starts the already-built container and drops you into a bash shell inside it without rebuilding.
-
-If `https://github.com/SamS709/cloud_logs_isaaclab.git` is private or otherwise requires auth, export `CLOUD_LOGS_GITHUB_TOKEN` before building:
-
-```bash
-cd docker
-./build.sh
-```
-
-The token is only used during the image build to fetch the logs repo.
-
-The container is configured to:
-
-- use `nvidia/cuda:12.9.2-cudnn-devel-ubuntu22.04` as the base image,
-- install `python3.11`, `pip`, `cmake`, and `build-essential`,
-- install `isaacsim[all,extscache]==5.1.0`,
-- install `torch==2.7.0` and `torchvision==0.22.0` from the CUDA 12.8 wheels index,
-- clone Isaac Lab into `/workspace/isaaclab_classic` and run `./isaaclab.sh --install rsl_rl`,
-- copy this repository to `/workspace/go2_lidar`,
-- install `source/go2_lidar` in editable mode,
-- clone `https://github.com/SamS709/cloud_logs_isaaclab.git` into `logs/rsl_rl`,
-- reuse Isaac Sim cache volumes from the standard run command.
-
-If you prefer a plain Docker command instead of the script, the interactive no-build equivalent is:
-
-```bash
-cd docker
-docker compose up -d --no-build --remove-orphans && docker compose exec go2_lidar bash
-```
-
-That only works after `./build.sh` has been run at least once.
-
 ## 1) Training
 
 To see how the lidar observations are computed, go to [lidar_info.md](lidar_info.md).
@@ -96,7 +56,7 @@ Make sure you are in your the classic Isaac Lab Python environment (not the Newt
 
     ```bash
     cd go2_lidar
-    python scripts/rsl_rl/train.py --task Isaac-Velocity-Rough-Go2-Lidar-Direct-v0 --num_envs 4096 --headless
+    python scripts/rsl_rl/train.py --task Isaac-Velocity-Rough-Go2-CNN-Lidar-Direct-v0 --num_envs 4096 --headless
     ```
 
 ### b) Test
@@ -104,32 +64,38 @@ Make sure you are in your the classic Isaac Lab Python environment (not the Newt
 - Run the trained policy :
 
     ```bash
-    python scripts/rsl_rl/play.py --task Isaac-Velocity-Rough-Go2-Lidar-Direct-v0 --num_envs 512
+    python scripts/rsl_rl/play.py --task Isaac-Velocity-Rough-Go2-CNN-Lidar-Direct-v0 --num_envs 512
     ```
 
-- Control the robot with the keyboard (here, a pretrained checkpoint is used for convenience):
-
-    ```bash
-    python scripts/control/go2_locomotion.py --checkpoint pretrained_checkpoint/pretrained_checkpoint.pt --visualize
-    ```
-
-    <img src="images/commands_control.png" width="400"/>
-
-    Controls:
-
-  - **Up/Down arrows**: Increase/decrease the robot's forward/backward velocity (x-axis)
-  - **Left/Right arrows**: Increase/decrease the robot's left/right velocity (y-axis)
-  - **F/G keys**: Increase/decrease the robot's angular velocity (yaw rotation)
+<img src="/images/robot_rough_vis_cmd.png" alt="Sim to real deployement" width="800" />
 
 ## 2) Sim2Sim
 
-Using HURO repository.
+Using HURO repository from the HUCEBOT team at INRIA.
 Simulated in gazebo.
 
 See the instructions given [here](https://github.com/hucebot/huro/tree/sami).
 
-The result (for the moment):
+The result without navigation (velocities sent with joystick):
+
+The result with navigation for the moment: 
 
 <img src="/images/gazebo_lidar_rl_compressed.gif" alt="Gazebo lidar RL demo" width="800" />
 
 ## 3) Sim2Real
+
+Using HURO repository from the HUCEBOT team at INRIA.
+
+See the instructions given [here](https://github.com/hucebot/huro/tree/sami).
+
+<img src="/images/sim2real_rough2.png" alt="Sim to real deployement" width="800" />
+
+
+## 4)  How does it work ?
+
+See the used rewards at To see how the lidar observations are computed, go to [go2_lidar_env.py](source/go2_lidar/go2_lidar/tasks/direct/go2_lidar/go2_lidar_env.py). 
+
+Here is the choosen structure for the neural net (A benchmarsk has been done resulting in the following classification: MLP < RNN< CNN)
+
+<img src="/images/neural_net.png" alt="Neural network" width="800" />
+
