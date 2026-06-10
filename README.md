@@ -20,13 +20,17 @@ The goal of this repo is to add the lidar of the go2 as a perception module so t
 **Key Features:**
 
 1) [**Training**](#1-training)
-    - A policy for go2 robot using direct based environnement. The policy follows the commands sent by the user: linear (x/y) velocitiezs // angular (z) velocity // base height.
+    - Train the policy in Isaaclab
+    - Play the policy
 2) [**Sim2Sim**](#2-sim2sim)
-    - Sim2Sim in Huro environment (GitHub of the HUCEBOT team at LORIA).
+    - Gazebo with controller - ROS2
+    - Gazebo with navigation - ROS2
 3) [**Sim2Real**](#3-sim2real)
-    - Sim2Real in Huro using ros2.
+    - Sim2Real - ROS2
 4) [**How does it work ?**](#4--how-does-it-work-)
-    - Sim2Real in Huro using ros2.
+    - Rewards
+    - Neural network
+    - Lidar & Heightmap
 
 
 ## Installation
@@ -42,7 +46,7 @@ The goal of this repo is to add the lidar of the go2 as a perception module so t
 - Using a python interpreter that has Isaac Lab installed, install the library in editable mode using:
 
     ```bash
-    cd go2_isaaclab
+    cd go2_lidar
     python -m pip install -e source/go2_lidar
     ```
 
@@ -50,7 +54,7 @@ The goal of this repo is to add the lidar of the go2 as a perception module so t
 
 To see how the lidar observations are computed, go to [lidar_info.md](lidar_info.md).
 
-### a) Train
+### Train
 
 Make sure you are in your the classic Isaac Lab Python environment (not the Newton branch).
 
@@ -61,7 +65,7 @@ Make sure you are in your the classic Isaac Lab Python environment (not the Newt
     python scripts/rsl_rl/train.py --task Isaac-Velocity-Rough-Go2-CNN-Lidar-Direct-v0 --num_envs 4096 --headless
     ```
 
-### b) Test
+### Test
 
 - Run the trained policy :
 
@@ -78,7 +82,11 @@ Simulated in gazebo.
 
 See the instructions given [here](https://github.com/hucebot/huro/tree/sami).
 
+### Velocities sent by joystick controller
+
 The result without navigation (velocities sent with joystick):
+
+### Velocities sent by the Nav2 stack
 
 The result with navigation for the moment: 
 
