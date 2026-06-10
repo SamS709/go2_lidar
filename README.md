@@ -23,7 +23,7 @@ The goal of this repo is to add the lidar of the go2 as a perception module so t
     - Sim2Sim in Huro environment (GitHub of the HUCEBOT team at LORIA).
 3) [**Sim2Real**](#3-sim2real)
     - Sim2Real in Huro using ros2.
-4) [**How does it work ?**](#4-howDoesItWork)
+4) [**How does it work ?**](#4--how-does-it-work-)
     - Sim2Real in Huro using ros2.
 
 
@@ -105,7 +105,9 @@ Here is the choosen structure for the neural net (A benchmarsk has been done res
 
 ### Lidar & Heightmap
 
-How is the heightmap computed ?
+The lidar data is transformed into a heighmap expressed in the lidar frame:
+
+<img src="/images/heightmap_sim_tensor.png" alt="Neural network" width="800" />
 
 
 To make the policy more robust and the lidar heighmap consistent with the real lidar observations, the follwing operations are applied to the heightmap:
