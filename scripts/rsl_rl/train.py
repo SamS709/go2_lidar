@@ -7,6 +7,8 @@
 
 """Launch Isaac Sim Simulator first."""
 """
+python ./scripts/rsl_rl/train.py --task Isaac-Velocity-Rough-Go2-CNN-Lidar-Direct-v0 --num_envs 4096 --resume --load_run 2026-05-05_19-25-43 --headless
+
 python ./scripts/rsl_rl/train.py --task Isaac-Velocity-Rough-Go2-Lidar-Direct-v0 --num_envs 4096 --resume --load_run 2026-05-05_19-25-43 --headless
 
 python ./scripts/rsl_rl/train.py --task Isaac-Velocity-Rough-Go2-Lidar-Distillation-Direct-v0 --num_envs 6144 --resume --load_run 2026-04-13_15-33-10_teacher --headless
