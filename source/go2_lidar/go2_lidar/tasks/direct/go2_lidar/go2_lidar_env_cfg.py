@@ -226,6 +226,10 @@ class Go2LidarFlatEnvCfg(DirectRLEnvCfg):
     filter_actions = False
     
     desired_base_height = 0.28
+    
+    desired_step_freq = 1.4
+    desired_duty_factor = 0.65
+    desired_phase_offset = [0.0, 0.5, 0.5, 0.0] #FL, FR, RL, RR
 
     # reward scales
     lin_vel_reward_scale = 2.0

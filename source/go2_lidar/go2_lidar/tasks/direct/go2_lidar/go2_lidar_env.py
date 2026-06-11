@@ -86,6 +86,13 @@ class Go2LidarEnv(DirectRLEnv):
         self._body_contact_info_teacher_sensor = self._base_id_sensor + self._thigh_ids_sensor + self._calf_ids_sensor
         self._finite_warn_counter = 0
         
+        
+        self._step_freq = torch.tensor(self.cfg.desired_step_freq, device=self.device)
+        self._duty_factor = torch.tensor(self.cfg.desired_duty_factor, device=self.device)
+        self._phase_offset = torch.tensor(self.cfg.desired_phase_offset, device=self.device).repeat(self.num_envs,1)
+        self._phase_signal = self._phase_offset.clone()# + self.step_dt * self._step_freq * torch.rand(self.num_envs, 1, device=self.device)*10.
+        self._phase_signal = self._phase_signal % 1.0
+        
     def build_col_to_subterrain(self):
         num_cols = self._terrain.cfg.terrain_generator.num_cols
         col_to_name = {}
@@ -353,6 +360,12 @@ class Go2LidarEnv(DirectRLEnv):
         
         # print(height_data_print + self.cfg.desired_base_height)
         
+        clock_data = torch.vstack([self._phase_signal[:,0], self._phase_signal[:,1], self._phase_signal[:,2], self._phase_signal[:,3]]).T
+        # all the envs that are not moving, we put -1
+        print(clock_data)
+        should_move = torch.linalg.norm(self.command_manager.get_command("base_velocity"), dim=1) > 0.01
+        clock_data[:, :] = clock_data[:, :]*should_move.unsqueeze(1).expand(-1, 4) + -1.0* ~should_move.unsqueeze(1).expand(-1, 4)
+        
         actor_proprio = torch.cat([
             self._robot.data.root_ang_vel_b + noise(self._robot.data.root_ang_vel_b, 0.1),
             self._robot.data.projected_gravity_b + noise(self._robot.data.projected_gravity_b, 0.05),
@@ -360,12 +373,12 @@ class Go2LidarEnv(DirectRLEnv):
             self._robot.data.joint_pos - self._robot.data.default_joint_pos + noise(self._robot.data.joint_pos, 0.01),
             self._robot.data.joint_vel + noise(self._robot.data.joint_vel, 0.1),
             self._actions,
+            clock_data,
         ], dim=-1)
         actor_proprio = self._sanitize_tensor(actor_proprio, "actor_proprio", clamp_abs=100.0)
 
         actor_grid = self._sanitize_tensor(height_data_actor, "actor_grid", clamp_abs=10.0)
 
-        foot_contacts = (torch.norm(self._contact_sensor.data.net_forces_w[:, self._feet_ids_sensor], dim=-1) > 1.0).float()
         
         critic_proprio = torch.cat([
             self._robot.data.root_lin_vel_b,
@@ -374,7 +387,7 @@ class Go2LidarEnv(DirectRLEnv):
             self.command_manager.get_command("base_velocity"),
             self._robot.data.joint_pos - self._robot.data.default_joint_pos,
             self._robot.data.joint_vel,
-            foot_contacts,
+            clock_data,
             self._actions,
         ], dim=-1)
         
@@ -435,30 +448,42 @@ class Go2LidarEnv(DirectRLEnv):
         cmd = torch.linalg.norm(self.command_manager.get_command("base_velocity"), dim=1)
         should_move = cmd > 0.01
 
-        # gait trot
         foot_contact = torch.norm(self._contact_sensor.data.net_forces_w[:, self._feet_ids_sensor], dim=-1) > 1.0
-        # FEET iDS:  [4, 8, 14, 18]
-        # RL ID:  ([14], ['RL_foot'])
-        # FL ID:  ([4], ['FL_foot'])
-        # RR ID:  ([18], ['RR_foot'])
-        # FR ID:  ([8], ['FR_foot'])
-        # Pair A in air: FL(0) and RR(3) off ground simultaneously
-        pair_A_air = (~foot_contact[:, 0]) & (~foot_contact[:, 3])  # [N]
-        # Pair B in air: FR(1) and RL(2) off ground simultaneously
-        pair_B_air = (~foot_contact[:, 1]) & (~foot_contact[:, 2])  # [N]
-        # reward when either valid diagonal pair is fully airborne
-        trot_pattern = (pair_A_air | pair_B_air).float()             # [N]
-        # --- penalise anti-trot: wrong pairs in air simultaneously ---
-        # e.g. FL+FR both up (bound) or FL+RL both up (pace) — not trot
-        wrong_pair = (
-            ((~foot_contact[:, 0]) & (~foot_contact[:, 1])) |  # FL+FR = bound front
-            ((~foot_contact[:, 2]) & (~foot_contact[:, 3])) |  # RL+RR = bound rear
-            ((~foot_contact[:, 0]) & (~foot_contact[:, 2])) |  # FL+RL = pace left
-            ((~foot_contact[:, 1]) & (~foot_contact[:, 3]))    # FR+RR = pace right
-        ).float()
-        # --- only reward when actually moving ---
-        gait = (trot_pattern - 0.5 * wrong_pair ).clamp(min=0.0) * should_move
+        foot_contact_hist = self._contact_sensor.data.net_forces_w_history[:, :, self._feet_ids_sensor, :].norm(dim=-1).max(dim=1)[0] > 1.0
+
+        # gait trot
+        should_move = torch.norm(self._commands[:, :3], dim=1) > 0.01
+        self._phase_signal += self.step_dt * self._step_freq
+        self._phase_signal = self._phase_signal % 1.0
+        contact_periodic_on = self._phase_signal < self._duty_factor
+        periodic_contact_suggestion = (torch.sum(contact_periodic_on*foot_contact_hist, dim=1) + \
+                                   torch.sum(~contact_periodic_on*~foot_contact_hist, dim=1))*should_move/4.0
+
+
+        # gait trot
+        # # FEET iDS:  [4, 8, 14, 18]
+        # # RL ID:  ([14], ['RL_foot'])
+        # # FL ID:  ([4], ['FL_foot'])
+        # # RR ID:  ([18], ['RR_foot'])
+        # # FR ID:  ([8], ['FR_foot'])
+        # # Pair A in air: FL(0) and RR(3) off ground simultaneously
+        # pair_A_air = (~foot_contact[:, 0]) & (~foot_contact[:, 3])  # [N]
+        # # Pair B in air: FR(1) and RL(2) off ground simultaneously
+        # pair_B_air = (~foot_contact[:, 1]) & (~foot_contact[:, 2])  # [N]
+        # # reward when either valid diagonal pair is fully airborne
+        # trot_pattern = (pair_A_air | pair_B_air).float()             # [N]
+        # # --- penalise anti-trot: wrong pairs in air simultaneously ---
+        # # e.g. FL+FR both up (bound) or FL+RL both up (pace) — not trot
+        # wrong_pair = (
+        #     ((~foot_contact[:, 0]) & (~foot_contact[:, 1])) |  # FL+FR = bound front
+        #     ((~foot_contact[:, 2]) & (~foot_contact[:, 3])) |  # RL+RR = bound rear
+        #     ((~foot_contact[:, 0]) & (~foot_contact[:, 2])) |  # FL+RL = pace left
+        #     ((~foot_contact[:, 1]) & (~foot_contact[:, 3]))    # FR+RR = pace right
+        # ).float()
+        # # --- only reward when actually moving ---
+        # gait = (trot_pattern - 0.5 * wrong_pair ).clamp(min=0.0) * should_move
         
+        # all feet grounded when stopped
         all_feet_grounded = (
             foot_contact[:, 0] &  # FL
             foot_contact[:, 1] &  # FR
