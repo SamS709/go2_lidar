@@ -90,7 +90,7 @@ class Go2LidarEnv(DirectRLEnv):
         self._step_freq = torch.tensor(self.cfg.desired_step_freq, device=self.device)
         self._duty_factor = torch.tensor(self.cfg.desired_duty_factor, device=self.device)
         self._phase_offset = torch.tensor(self.cfg.desired_phase_offset, device=self.device).repeat(self.num_envs,1)
-        self._phase_signal = self._phase_offset.clone()# + self.step_dt * self._step_freq * torch.rand(self.num_envs, 1, device=self.device)*10.
+        self._phase_signal = self._phase_offset.clone()
         self._phase_signal = self._phase_signal % 1.0
         
     def build_col_to_subterrain(self):
@@ -452,11 +452,10 @@ class Go2LidarEnv(DirectRLEnv):
         foot_contact_hist = self._contact_sensor.data.net_forces_w_history[:, :, self._feet_ids_sensor, :].norm(dim=-1).max(dim=1)[0] > 1.0
 
         # gait trot
-        should_move = torch.norm(self._commands[:, :3], dim=1) > 0.01
         self._phase_signal += self.step_dt * self._step_freq
         self._phase_signal = self._phase_signal % 1.0
         contact_periodic_on = self._phase_signal < self._duty_factor
-        periodic_contact_suggestion = (torch.sum(contact_periodic_on*foot_contact_hist, dim=1) + \
+        gait = (torch.sum(contact_periodic_on*foot_contact_hist, dim=1) + \
                                    torch.sum(~contact_periodic_on*~foot_contact_hist, dim=1))*should_move/4.0
 
 
@@ -598,6 +597,11 @@ class Go2LidarEnv(DirectRLEnv):
             self._offsets[reset_env_ids] = torch.empty(num_resets, device=self.device).uniform_(
                 -self.cfg.max_offset, self.cfg.max_offset
             )
+            
+        # reset phase
+        self._phase_signal[env_ids] = self._phase_offset[env_ids].clone()
+        self._phase_signal[env_ids] = self._phase_signal[env_ids]  % 1.0
+        
         # Reset robot state
         joint_pos = self._robot.data.default_joint_pos[reset_env_ids]
         joint_vel = self._robot.data.default_joint_vel[reset_env_ids]

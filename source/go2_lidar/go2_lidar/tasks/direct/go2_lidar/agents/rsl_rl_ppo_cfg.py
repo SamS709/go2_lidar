@@ -9,7 +9,13 @@ from isaaclab_rl.rsl_rl import (
     RslRlOnPolicyRunnerCfg,
     RslRlPpoAlgorithmCfg,
 )
+
 from isaaclab_rl.rsl_rl.rl_cfg import RslRlCNNModelCfg, RslRlMLPModelCfg, RslRlRNNModelCfg
+
+from go2_lidar.tasks.direct.go2_lidar.networks.cnn3d_cfg import RslRlCNN3DModelCfg
+from go2_lidar.tasks.direct.go2_lidar.networks.cnn_rnn_cfg import RslRlCNNRNNModelCfg
+CNN3D_MODEL = "go2_lidar.tasks.direct.go2_lidar.networks.cnn3d_model:CNN3DModel"
+CNN_RNN_SEQ_MODEL = "go2_lidar.tasks.direct.go2_lidar.networks.cnn_rnn_model:CNNRNNSeqModel"
 
 
 @configclass
@@ -195,6 +201,129 @@ class Go2LidarRoughMLPPPORunnerCfg(RslRlOnPolicyRunnerCfg):
         obs_normalization=True,
     )
 
+    algorithm = RslRlPpoAlgorithmCfg(
+        value_loss_coef=1.0,
+        use_clipped_value_loss=True,
+        clip_param=0.2,
+        entropy_coef=0.01,
+        num_learning_epochs=5,
+        num_mini_batches=8,
+        learning_rate=1e-3,
+        schedule="adaptive",
+        gamma=0.99,
+        lam=0.95,
+        desired_kl=0.01,
+        max_grad_norm=1.0,
+    )
+
+
+
+@configclass
+class Go2LidarRoughCNN3DPPORunnerCfg(RslRlOnPolicyRunnerCfg):
+    num_steps_per_env = 24
+    max_iterations = 100000
+    save_interval = 50
+    experiment_name = "go2_lidar_cnn3D"
+    obs_groups = {
+        "actor": ["actor_proprio", "actor_grid"],
+        "critic": ["critic_proprio", "critic_grid"],
+    }
+    actor = RslRlCNN3DModelCfg(
+        class_name=CNN3D_MODEL,
+        hidden_dims=[512, 256, 128],
+        activation="elu",
+        obs_normalization=True,
+        cnn_cfg=RslRlCNN3DModelCfg.CNNCfg(
+            output_channels=[16, 32],
+            kernel_size=[5, 3],         
+            stride=[2, 2],
+            activation="relu",
+            max_pool=False,
+            global_pool="none",         
+        ),
+        distribution_cfg=RslRlMLPModelCfg.GaussianDistributionCfg(
+            init_std=0.8, std_type="log"
+        ),
+    )
+
+    critic = RslRlCNN3DModelCfg(
+        class_name=CNN3D_MODEL,
+        hidden_dims=[512, 256, 128],
+        activation="elu",
+        obs_normalization=True,
+        cnn_cfg=RslRlCNN3DModelCfg.CNNCfg(
+            output_channels=[16, 32],
+            kernel_size=[5, 3],
+            stride=[2, 2],
+            activation="relu",
+            max_pool=False,
+            global_pool="none",
+        ),
+    )
+    algorithm = RslRlPpoAlgorithmCfg(
+        value_loss_coef=1.0,
+        use_clipped_value_loss=True,
+        clip_param=0.2,
+        entropy_coef=0.01,
+        num_learning_epochs=5,
+        num_mini_batches=8,
+        learning_rate=1e-3,
+        schedule="adaptive",
+        gamma=0.99,
+        lam=0.95,
+        desired_kl=0.01,
+        max_grad_norm=1.0,
+    )
+    
+
+@configclass
+class Go2LidarRoughCNNRNNSeqPPORunnerCfg(RslRlOnPolicyRunnerCfg):
+    num_steps_per_env = 24
+    max_iterations = 100000
+    save_interval = 50
+    experiment_name = "go2_lidar_cnn_rnn_seq"
+    obs_groups = {
+        "actor": ["actor_proprio", "actor_grid"],
+        "critic": ["critic_proprio", "critic_grid"],
+    }
+    actor = RslRlCNNRNNModelCfg(
+        class_name=CNN_RNN_SEQ_MODEL,
+        hidden_dims=[512, 256, 128],
+        activation="elu",
+        obs_normalization=True,
+        cnn_cfg=RslRlCNNRNNModelCfg.CNNCfg(
+            output_channels=[16, 32],
+            kernel_size=[5, 3],         
+            stride=[2, 2],
+            activation="relu",
+            max_pool=False,
+            global_pool="none",         
+        ),
+        rnn_type="gru",
+        rnn_hidden_dim=128,
+        rnn_num_layers=1,
+        distribution_cfg=RslRlMLPModelCfg.GaussianDistributionCfg(
+            init_std=0.8, std_type="log"
+        ),
+    )
+
+    critic = RslRlCNNRNNModelCfg(
+        class_name=CNN_RNN_SEQ_MODEL,
+        hidden_dims=[512, 256, 128],
+        activation="elu",
+        obs_normalization=True,
+        cnn_cfg=RslRlCNNRNNModelCfg.CNNCfg(
+            output_channels=[16, 32],
+            kernel_size=[5, 3],
+            stride=[2, 2],
+            activation="relu",
+            max_pool=False,
+            global_pool="none",
+        ),
+        rnn_type="gru",
+        rnn_hidden_dim=128,
+        rnn_num_layers=1,
+    )
     algorithm = RslRlPpoAlgorithmCfg(
         value_loss_coef=1.0,
         use_clipped_value_loss=True,
