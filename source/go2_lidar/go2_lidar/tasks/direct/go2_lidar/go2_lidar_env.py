@@ -13,6 +13,7 @@ import isaaclab.utils.math as math_utils
 
 from isaaclab.assets import Articulation
 from isaaclab.envs import DirectRLEnv
+from isaaclab.utils.buffers import DelayBuffer
 from isaaclab.sensors import ContactSensor, RayCaster
 from isaaclab.managers import CommandManager, CurriculumManager
 from isaaclab.utils.math import quat_conjugate, quat_apply, quat_mul, quat_inv, quat_rotate_inverse
@@ -44,6 +45,17 @@ class Go2LidarEnv(DirectRLEnv):
         self.command_manager = CommandManager(self.cfg.commands, self)
         self.curriculum_manager = CurriculumManager(self.cfg.curriculum, self)
         self._desired_hip_offset = torch.tensor([-self.cfg.desired_hip_offset, self.cfg.desired_hip_offset, -self.cfg.desired_hip_offset, self.cfg.desired_hip_offset], device=self.device)
+        if self.cfg.delay == True:
+            self._buffer = DelayBuffer(history_length=self.cfg.history_length, batch_size=self.num_envs, device=self.device)
+            if self.cfg.history_length > 0:
+                self._buffer.set_time_lag(
+                    torch.randint(low=0, high=self.cfg.history_length, size=(self.num_envs,), device=self.device)
+                )
+            self._grid_buffer = DelayBuffer(history_length=self.cfg.history_length, batch_size=self.num_envs, device=self.device)
+            if self.cfg.history_length > 0:
+                self._grid_buffer.set_time_lag(
+                    torch.randint(low=0, high=self.cfg.history_length, size=(self.num_envs,), device=self.device)
+                )
         # Logging
         self._episode_sums = {
             key: torch.zeros(self.num_envs, dtype=torch.float, device=self.device)
@@ -87,11 +99,11 @@ class Go2LidarEnv(DirectRLEnv):
         self._finite_warn_counter = 0
         
         
-        self._step_freq = torch.tensor(self.cfg.desired_step_freq, device=self.device)
-        self._duty_factor = torch.tensor(self.cfg.desired_duty_factor, device=self.device)
-        self._phase_offset = torch.tensor(self.cfg.desired_phase_offset, device=self.device).repeat(self.num_envs,1)
-        self._phase_signal = self._phase_offset.clone()
-        self._phase_signal = self._phase_signal % 1.0
+        # self._step_freq = torch.tensor(self.cfg.desired_step_freq, device=self.device)
+        # self._duty_factor = torch.tensor(self.cfg.desired_duty_factor, device=self.device)
+        # self._phase_offset = torch.tensor(self.cfg.desired_phase_offset, device=self.device).repeat(self.num_envs,1)
+        # self._phase_signal = self._phase_offset.clone()
+        # self._phase_signal = self._phase_signal % 1.0
         
     def build_col_to_subterrain(self):
         num_cols = self._terrain.cfg.terrain_generator.num_cols
@@ -360,11 +372,11 @@ class Go2LidarEnv(DirectRLEnv):
         
         # print(height_data_print + self.cfg.desired_base_height)
         
-        clock_data = torch.vstack([self._phase_signal[:,0], self._phase_signal[:,1], self._phase_signal[:,2], self._phase_signal[:,3]]).T
-        # all the envs that are not moving, we put -1
-        print(clock_data)
-        should_move = torch.linalg.norm(self.command_manager.get_command("base_velocity"), dim=1) > 0.01
-        clock_data[:, :] = clock_data[:, :]*should_move.unsqueeze(1).expand(-1, 4) + -1.0* ~should_move.unsqueeze(1).expand(-1, 4)
+        # clock_data = torch.vstack([self._phase_signal[:,0], self._phase_signal[:,1], self._phase_signal[:,2], self._phase_signal[:,3]]).T
+        # # all the envs that are not moving, we put -1
+        # print(clock_data)
+        # should_move = torch.linalg.norm(self.command_manager.get_command("base_velocity"), dim=1) > 0.01
+        # clock_data[:, :] = clock_data[:, :]*should_move.unsqueeze(1).expand(-1, 4) + -1.0* ~should_move.unsqueeze(1).expand(-1, 4)
         
         actor_proprio = torch.cat([
             self._robot.data.root_ang_vel_b + noise(self._robot.data.root_ang_vel_b, 0.1),
@@ -373,7 +385,7 @@ class Go2LidarEnv(DirectRLEnv):
             self._robot.data.joint_pos - self._robot.data.default_joint_pos + noise(self._robot.data.joint_pos, 0.01),
             self._robot.data.joint_vel + noise(self._robot.data.joint_vel, 0.1),
             self._actions,
-            clock_data,
+            # clock_data,
         ], dim=-1)
         actor_proprio = self._sanitize_tensor(actor_proprio, "actor_proprio", clamp_abs=100.0)
 
@@ -387,7 +399,7 @@ class Go2LidarEnv(DirectRLEnv):
             self.command_manager.get_command("base_velocity"),
             self._robot.data.joint_pos - self._robot.data.default_joint_pos,
             self._robot.data.joint_vel,
-            clock_data,
+            # clock_data,
             self._actions,
         ], dim=-1)
         
@@ -398,6 +410,10 @@ class Go2LidarEnv(DirectRLEnv):
         critic_proprio = self._sanitize_tensor(critic_proprio, "critic_proprio", clamp_abs=100.0)
 
         critic_grid = self._sanitize_tensor(height_data, "critic_grid", clamp_abs=10.0)
+        
+        if self.cfg.delay == True:
+            actor_proprio = self._buffer.compute(actor_proprio)
+            actor_grid = self._grid_buffer.compute(actor_grid)
        
 
         return {
@@ -449,38 +465,38 @@ class Go2LidarEnv(DirectRLEnv):
         should_move = cmd > 0.01
 
         foot_contact = torch.norm(self._contact_sensor.data.net_forces_w[:, self._feet_ids_sensor], dim=-1) > 1.0
-        foot_contact_hist = self._contact_sensor.data.net_forces_w_history[:, :, self._feet_ids_sensor, :].norm(dim=-1).max(dim=1)[0] > 1.0
+        # foot_contact_hist = self._contact_sensor.data.net_forces_w_history[:, :, self._feet_ids_sensor, :].norm(dim=-1).max(dim=1)[0] > 1.0
 
         # gait trot
-        self._phase_signal += self.step_dt * self._step_freq
-        self._phase_signal = self._phase_signal % 1.0
-        contact_periodic_on = self._phase_signal < self._duty_factor
-        gait = (torch.sum(contact_periodic_on*foot_contact_hist, dim=1) + \
-                                   torch.sum(~contact_periodic_on*~foot_contact_hist, dim=1))*should_move/4.0
+        # self._phase_signal += self.step_dt * self._step_freq
+        # self._phase_signal = self._phase_signal % 1.0
+        # contact_periodic_on = self._phase_signal < self._duty_factor
+        # gait = (torch.sum(contact_periodic_on*foot_contact_hist, dim=1) + \
+                                #    torch.sum(~contact_periodic_on*~foot_contact_hist, dim=1))*should_move/4.0
 
 
         # gait trot
-        # # FEET iDS:  [4, 8, 14, 18]
-        # # RL ID:  ([14], ['RL_foot'])
-        # # FL ID:  ([4], ['FL_foot'])
-        # # RR ID:  ([18], ['RR_foot'])
-        # # FR ID:  ([8], ['FR_foot'])
-        # # Pair A in air: FL(0) and RR(3) off ground simultaneously
-        # pair_A_air = (~foot_contact[:, 0]) & (~foot_contact[:, 3])  # [N]
-        # # Pair B in air: FR(1) and RL(2) off ground simultaneously
-        # pair_B_air = (~foot_contact[:, 1]) & (~foot_contact[:, 2])  # [N]
-        # # reward when either valid diagonal pair is fully airborne
-        # trot_pattern = (pair_A_air | pair_B_air).float()             # [N]
-        # # --- penalise anti-trot: wrong pairs in air simultaneously ---
-        # # e.g. FL+FR both up (bound) or FL+RL both up (pace) — not trot
-        # wrong_pair = (
-        #     ((~foot_contact[:, 0]) & (~foot_contact[:, 1])) |  # FL+FR = bound front
-        #     ((~foot_contact[:, 2]) & (~foot_contact[:, 3])) |  # RL+RR = bound rear
-        #     ((~foot_contact[:, 0]) & (~foot_contact[:, 2])) |  # FL+RL = pace left
-        #     ((~foot_contact[:, 1]) & (~foot_contact[:, 3]))    # FR+RR = pace right
-        # ).float()
-        # # --- only reward when actually moving ---
-        # gait = (trot_pattern - 0.5 * wrong_pair ).clamp(min=0.0) * should_move
+        # FEET iDS:  [4, 8, 14, 18]
+        # RL ID:  ([14], ['RL_foot'])
+        # FL ID:  ([4], ['FL_foot'])
+        # RR ID:  ([18], ['RR_foot'])
+        # FR ID:  ([8], ['FR_foot'])
+        # Pair A in air: FL(0) and RR(3) off ground simultaneously
+        pair_A_air = (~foot_contact[:, 0]) & (~foot_contact[:, 3])  # [N]
+        # Pair B in air: FR(1) and RL(2) off ground simultaneously
+        pair_B_air = (~foot_contact[:, 1]) & (~foot_contact[:, 2])  # [N]
+        # reward when either valid diagonal pair is fully airborne
+        trot_pattern = (pair_A_air | pair_B_air).float()             # [N]
+        # --- penalise anti-trot: wrong pairs in air simultaneously ---
+        # e.g. FL+FR both up (bound) or FL+RL both up (pace) — not trot
+        wrong_pair = (
+            ((~foot_contact[:, 0]) & (~foot_contact[:, 1])) |  # FL+FR = bound front
+            ((~foot_contact[:, 2]) & (~foot_contact[:, 3])) |  # RL+RR = bound rear
+            ((~foot_contact[:, 0]) & (~foot_contact[:, 2])) |  # FL+RL = pace left
+            ((~foot_contact[:, 1]) & (~foot_contact[:, 3]))    # FR+RR = pace right
+        ).float()
+        # --- only reward when actually moving ---
+        gait = (trot_pattern - 0.5 * wrong_pair ).clamp(min=0.0) * should_move
         
         # all feet grounded when stopped
         all_feet_grounded = (
@@ -514,7 +530,7 @@ class Go2LidarEnv(DirectRLEnv):
         # stay around default pos:        
         joint_deviation = torch.sum(torch.square(self._robot.data.joint_pos - self._robot.data.default_joint_pos), dim=1)
         def_pos = torch.where(should_move, joint_deviation, self.cfg.stand_still_scale * joint_deviation) * terrain_mask
-
+        
         forces_z = torch.abs(self._contact_sensor.data.net_forces_w[:, self._feet_ids_sensor, 2])
         forces_xy = torch.linalg.norm(self._contact_sensor.data.net_forces_w[:, self._feet_ids_sensor, :2], dim=2)
         feet_vertical_surface_contacts = torch.any(forces_xy > 4 * forces_z, dim=1).float()
@@ -598,9 +614,19 @@ class Go2LidarEnv(DirectRLEnv):
                 -self.cfg.max_offset, self.cfg.max_offset
             )
             
+        if self.cfg.delay == True:
+            self._buffer.reset(env_ids.tolist())
+            self._buffer.set_time_lag(
+                    torch.randint(low=0, high=self.cfg.history_length, size=(self.num_envs,), device=self.device)
+                )
+            self._grid_buffer.reset(env_ids.tolist())
+            self._grid_buffer.set_time_lag(
+                    torch.randint(low=0, high=self.cfg.history_length, size=(self.num_envs,), device=self.device)
+                )
+            
         # reset phase
-        self._phase_signal[env_ids] = self._phase_offset[env_ids].clone()
-        self._phase_signal[env_ids] = self._phase_signal[env_ids]  % 1.0
+        # self._phase_signal[env_ids] = self._phase_offset[env_ids].clone()
+        # self._phase_signal[env_ids] = self._phase_signal[env_ids]  % 1.0
         
         # Reset robot state
         joint_pos = self._robot.data.default_joint_pos[reset_env_ids]
