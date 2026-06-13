@@ -67,11 +67,7 @@ class Go2LidarCNN3DEnv(Go2LidarEnv):
         # print(critic_grid + 0.28)
         # print(height_data_actor + 0.28)
         
-        clock_data = torch.vstack([self._phase_signal[:,0], self._phase_signal[:,1], self._phase_signal[:,2], self._phase_signal[:,3]]).T
-        # all the envs that are not moving, we put -1
-        should_move = torch.linalg.norm(self.command_manager.get_command("base_velocity"), dim=1) > 0.01
-        clock_data[:, :] = clock_data[:, :]*should_move.unsqueeze(1).expand(-1, 4) + -1.0* ~should_move.unsqueeze(1).expand(-1, 4)
-        # print(clock_data)
+
         # Actor (student) proprio observations — limited/noisy proprio inputs used by policy.
         actor_proprio = torch.cat(
             [
@@ -86,7 +82,6 @@ class Go2LidarCNN3DEnv(Go2LidarEnv):
                 self._robot.data.joint_vel
                 + (2.0 * torch.rand_like(self._robot.data.joint_vel) - 1.0) * float(0.1) * self.cfg.randomize,
                 self._actions,
-                clock_data
             ],
             dim=-1,
         )
@@ -104,7 +99,6 @@ class Go2LidarCNN3DEnv(Go2LidarEnv):
                 self._robot.data.joint_pos - self._robot.data.default_joint_pos,
                 self._robot.data.joint_vel,
                 self._actions,
-                clock_data
             ],
             dim=-1,
         )
