@@ -47,6 +47,7 @@ class Go2LidarCNNEnv(Go2LidarEnv):
         height_data_actor = self._sanitize_tensor(height_data_actor, "height_data_actor", clamp_abs=10.0)
         height_data = height_data.view(self.num_envs, x_cells, y_cells).flip(dims=[1]).unsqueeze(1)
         height_data_actor = height_data_actor.view(self.num_envs, x_cells, y_cells).flip(dims=[1]).unsqueeze(1)
+        # height_data_actor = torch.zeros_like(height_data_actor, device=self.device)
         # torch.set_printoptions(precision=2, linewidth=1000, sci_mode=False)
         # print(self._rots)
         # print(self._offsets)
