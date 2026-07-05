@@ -358,7 +358,7 @@ class Go2LidarRoughEnvCfg(Go2LidarFlatEnvCfg):
     # New grid-based heightmap config (values are in lidar frame).
     # NOTE: `res` is used as cell size in meters.
     res = 0.1
-    x_range = [-0.5, 0.8]
+    x_range = [0.0, 0.5]
     y_range = [-0.5, 0.5]
     # height_map_cells = int(2 * height_map_dist * res) ** 2  
     # observation_space = 53 + height_map_cells  
