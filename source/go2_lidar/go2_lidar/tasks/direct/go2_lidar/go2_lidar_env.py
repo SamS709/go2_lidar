@@ -157,7 +157,7 @@ class Go2LidarEnv(DirectRLEnv):
         self.reset_zeros_freq = int(torch.randint(1, self.cfg.max_reset_zeros_freq + 1, (1,), device=self.device).item())        
     
     def _apply_yaw_rotation(self, points: torch.Tensor) -> torch.Tensor:
-        angles = torch.deg2rad(self._rots).unsqueeze(-1)
+        angles = torch.deg2rad(self._rots_yaw).unsqueeze(-1)
         cos_angles = torch.cos(angles)
         sin_angles = torch.sin(angles)
         x_coord = points[..., 0]
@@ -166,6 +166,17 @@ class Go2LidarEnv(DirectRLEnv):
         rotated_x = x_coord * cos_angles + z_coord * sin_angles
         rotated_z = -x_coord * sin_angles + z_coord * cos_angles
         return torch.stack((rotated_x, y_coord, rotated_z), dim=-1)
+    
+    def _apply_roll_rotation(self, points: torch.Tensor) -> torch.Tensor:
+        angles = torch.deg2rad(self._rots).unsqueeze(-1)
+        cos_angles = torch.cos(angles)
+        sin_angles = torch.sin(angles)
+        x_coord = points[..., 0]
+        y_coord = points[..., 1]
+        z_coord = points[..., 2]
+        rotated_y = y_coord * cos_angles - z_coord * sin_angles
+        rotated_z = y_coord * sin_angles + z_coord * cos_angles
+        return torch.stack((x_coord, rotated_y, rotated_z), dim=-1)
 
     def _setup_scene(self):
         self._robot = Articulation(self.cfg.robot)
@@ -183,9 +194,11 @@ class Go2LidarEnv(DirectRLEnv):
             x_cells = max(1, int((self.cfg.x_range[1] - self.cfg.x_range[0]) / self.cfg.res))
             y_cells = max(1, int((self.cfg.y_range[1] - self.cfg.y_range[0]) / self.cfg.res))
             self._create_gaussian_heightmap(x_cells, y_cells)
-            self._rots = torch.empty(self.num_envs, device=self.device)
+            self._rots_yaw = torch.empty(self.num_envs, device=self.device)
+            self._rots_roll = torch.empty(self.num_envs, device=self.device)
             self._offsets = torch.empty(self.num_envs, device=self.device)
-            self._rots.uniform_(-self.cfg.max_rot, self.cfg.max_rot)
+            self._rots_yaw.uniform_(-self.cfg.max_rot, self.cfg.max_rot)
+            self._rots_roll.uniform_(-self.cfg.max_rot, self.cfg.max_rot)
             self._offsets.uniform_(-self.cfg.max_offset, self.cfg.max_offset)
             # self._rots = torch.tensor()
             
@@ -234,6 +247,7 @@ class Go2LidarEnv(DirectRLEnv):
                 ray_hits_w = self._height_scanner.data.ray_hits_w
                 ray_hits_rel = ray_hits_w - self._height_scanner.data.pos_w.unsqueeze(1)
                 ray_hits_rel = self._apply_yaw_rotation(ray_hits_rel)
+                ray_hits_rel = self._apply_roll_rotation(ray_hits_rel)
                 height_data = (self._height_scanner.data.pos_w[:, 2].unsqueeze(1) - ray_hits_rel[..., 2] - self.cfg.desired_base_height).clip(-1.0, 1.0)
                 height_data = self._apply_offset(height_data)  
                 height_data += (2.0 * torch.rand_like(height_data) - 1.0) * float(0.01)
@@ -262,6 +276,7 @@ class Go2LidarEnv(DirectRLEnv):
 
             if randomize and hasattr(self, "_rots"):
                 hits_in_base = self._apply_yaw_rotation(hits_in_base)
+                hits_in_base = self._apply_roll_rotation(hits_in_base)
 
             # 3. The height in the base frame is the Z component (negative = below robot)
             height_data = -hits_in_base[..., 2] - self.cfg.desired_base_height
@@ -286,6 +301,7 @@ class Go2LidarEnv(DirectRLEnv):
         # rays_lidar = rays_rel_w
         if randomize and hasattr(self, "_rots"):
             rays_lidar = self._apply_yaw_rotation(rays_lidar)
+            rays_lidar = self._apply_roll_rotation(rays_lidar)
 
         cell_size_m = float(self.cfg.res)
         inv_cell_size = 1.0 / cell_size_m
@@ -609,7 +625,8 @@ class Go2LidarEnv(DirectRLEnv):
         self.command_manager.reset(reset_env_ids)
         if hasattr(self, "_rots"):
             num_resets = reset_env_ids.numel()
-            self._rots[reset_env_ids] = torch.empty(num_resets, device=self.device).uniform_(-self.cfg.max_rot, self.cfg.max_rot)
+            self._rots_yaw[reset_env_ids] = torch.empty(num_resets, device=self.device).uniform_(-self.cfg.max_rot, self.cfg.max_rot)
+            self._rots_roll[reset_env_ids] = torch.empty(num_resets, device=self.device).uniform_(-self.cfg.max_rot, self.cfg.max_rot)    
             self._offsets[reset_env_ids] = torch.empty(num_resets, device=self.device).uniform_(
                 -self.cfg.max_offset, self.cfg.max_offset
             )
