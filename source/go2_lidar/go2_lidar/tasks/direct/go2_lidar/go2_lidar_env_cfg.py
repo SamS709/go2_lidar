@@ -354,12 +354,39 @@ class Go2LidarRoughEnvCfg(Go2LidarFlatEnvCfg):
         debug_vis=False,
     )
     #  # Heightmap configuration
-    height_map_dist = 1.0
     # New grid-based heightmap config (values are in lidar frame).
     # NOTE: `res` is used as cell size in meters.
+    
+    # total tracked time = proprio_buffer_length * 0.02
+    proprio_buffer_length = 20
+    
+    
+    height_map_dist = 1.0
     res = 0.1
     x_range = [-0.5, 0.5]
     y_range = [-0.5, 0.5]
+    
+    sigma = 4.00
+    n_zeros = 20
+    max_reset_zeros_freq = 8
+    max_rot = 4.0
+    max_offset = 0.05
+    
+    height_scanner = RayCasterCfg(
+        prim_path="/World/envs/env_.*/Robot/base/radar",
+        update_period=1 / 60,
+        offset=RayCasterCfg.OffsetCfg(
+            # pos=lidar_offset,
+            # rot=lidar_rotation,
+        ),
+        mesh_prim_paths=["/World"],
+        ray_alignment="base",
+        pattern_cfg=patterns.LidarPatternCfg(
+            channels=64, vertical_fov_range=[0.0, 90.0], horizontal_fov_range=[-180, 180], horizontal_res=2.0
+        ),
+        max_distance=2.0,
+        debug_vis=False,
+    )
     # height_map_cells = int(2 * height_map_dist * res) ** 2  
     # observation_space = 53 + height_map_cells  
     
@@ -381,21 +408,7 @@ class Go2LidarRoughEnvCfg(Go2LidarFlatEnvCfg):
     #     max_distance=4.0,
     #     debug_vis=False,
     # )
-    height_scanner = RayCasterCfg(
-        prim_path="/World/envs/env_.*/Robot/base/radar",
-        update_period=1 / 60,
-        offset=RayCasterCfg.OffsetCfg(
-            # pos=lidar_offset,
-            # rot=lidar_rotation,
-        ),
-        mesh_prim_paths=["/World"],
-        ray_alignment="base",
-        pattern_cfg=patterns.LidarPatternCfg(
-            channels=64, vertical_fov_range=[0.0, 90.0], horizontal_fov_range=[-180, 180], horizontal_res=2.0
-        ),
-        max_distance=2.0,
-        debug_vis=False,
-    )
+    
    
     # height_scanner = RayCasterCfg(
     #     prim_path="/World/envs/env_.*/Robot/base",
@@ -415,11 +428,7 @@ class Go2LidarRoughEnvCfg(Go2LidarFlatEnvCfg):
 
     # Pre-computed quaternion (w, x, y, z) from euler angles (-pi, pi - 2.8782, -pi)
 
-    sigma = 4.00
-    n_zeros = 20
-    max_reset_zeros_freq = 8
-    max_rot = 4.0
-    max_offset = 0.05
+    
     
     # the heightmap is 1.5 * 1, offseted by lidar offset + 0.25 on x such that it detects 1 metter in front of and 0.5 meters behind the lidar frame
     # on the real robot, from the lidar frame: grid 0.5 meters left and right and 1 meter front and 0.5 meters behind

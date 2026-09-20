@@ -48,7 +48,8 @@ class Go2LidarCNNEnv(Go2LidarEnv):
         height_data = height_data.view(self.num_envs, x_cells, y_cells).flip(dims=[1]).unsqueeze(1)
         height_data_actor = height_data_actor.view(self.num_envs, x_cells, y_cells).flip(dims=[1]).unsqueeze(1)
         # height_data_actor = torch.zeros_like(height_data_actor, device=self.device)
-        # torch.set_printoptions(precision=2, linewidth=1000, sci_mode=False)
+        torch.set_printoptions(precision=2, linewidth=1000, sci_mode=False)
+        # print(height_data_actor[0])
         # print(self._rots)
         # print(self._offsets)
         # print(self.reset_zeros_freq)
@@ -79,7 +80,7 @@ class Go2LidarCNNEnv(Go2LidarEnv):
             dim=-1,
         )
         actor_proprio = self._sanitize_tensor(actor_proprio, "actor_proprio", clamp_abs=100.0)
-
+        
         # Critic (privileged) proprio observations — include privileged sensors like base linear velocity,
         # contact flags and other privileged terms useful for value estimation.
 
@@ -97,13 +98,14 @@ class Go2LidarCNNEnv(Go2LidarEnv):
             dim=-1,
         )
         critic_proprio = self._sanitize_tensor(critic_proprio, "critic_proprio", clamp_abs=100.0)
+        self._update_proprio_buffers(actor_proprio, critic_proprio)
 
         # Update previous actions and return unified observation dict (flat keys for runner grouping).
         self._previous_actions = self._actions.clone()
 
         return {
-            "actor_proprio": actor_proprio,
+            "actor_proprio": self.proprio_buffer_actor.reshape(self.num_envs, -1),
             "actor_grid": height_data_actor,
-            "critic_proprio": critic_proprio,
+            "critic_proprio": self.proprio_buffer_critic.reshape(self.num_envs, -1),
             "critic_grid": height_data,
         }

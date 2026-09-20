@@ -40,6 +40,12 @@ class Go2LidarEnv(DirectRLEnv):
         self._previous_previous_actions = torch.zeros(
             self.num_envs, gym.spaces.flatdim(self.single_action_space), device=self.device
         )
+        self.proprio_buffer_actor = torch.zeros(
+            self.num_envs, int(self.cfg.proprio_buffer_length), 45, device=self.device
+        )
+        self.proprio_buffer_critic = torch.zeros(
+            self.num_envs, int(self.cfg.proprio_buffer_length), 48, device=self.device
+        )
 
         # X/Y linear velocity and yaw angular velocity commands
         self.command_manager = CommandManager(self.cfg.commands, self)
@@ -390,7 +396,7 @@ class Go2LidarEnv(DirectRLEnv):
         # print(clock_data)
         # should_move = torch.linalg.norm(self.command_manager.get_command("base_velocity"), dim=1) > 0.01
         # clock_data[:, :] = clock_data[:, :]*should_move.unsqueeze(1).expand(-1, 4) + -1.0* ~should_move.unsqueeze(1).expand(-1, 4)
-        
+        # 3+3+3+12+12+12 = 45
         actor_proprio = torch.cat([
             self._robot.data.root_ang_vel_b + noise(self._robot.data.root_ang_vel_b, 0.1),
             self._robot.data.projected_gravity_b + noise(self._robot.data.projected_gravity_b, 0.05),
@@ -674,3 +680,14 @@ class Go2LidarEnv(DirectRLEnv):
         extras["Episode_Termination/base_contact"] = torch.count_nonzero(self.reset_terminated[reset_env_ids]).item()
         extras["Episode_Termination/time_out"] = torch.count_nonzero(self.reset_time_outs[reset_env_ids]).item()
         self.extras["log"].update(extras)
+
+
+
+    def _update_proprio_buffers(self, proprio_obs_actor: torch.Tensor, proprio_obs_critic: torch.Tensor) -> None:
+        """
+        updating odom_obs_hist, filled by the back: the most recent are at the end of the buffer.
+        """
+        self.proprio_buffer_actor = torch.roll(self.proprio_buffer_actor, -1, 1)
+        self.proprio_buffer_actor[:, -1, :] = proprio_obs_actor
+        self.proprio_buffer_critic = torch.roll(self.proprio_buffer_critic, -1, 1)
+        self.proprio_buffer_critic[:, -1, :] = proprio_obs_critic
