@@ -235,8 +235,8 @@ class Go2LidarEnv(DirectRLEnv):
         
 
     def _apply_action(self):
-        self._robot.set_joint_position_target(self._processed_actions)
-        # self._robot.set_joint_position_target(self._robot.data.default_joint_pos)    
+        # self._robot.set_joint_position_target(self._processed_actions)
+        self._robot.set_joint_position_target(self._robot.data.default_joint_pos)    
         
     def _compute_height_data(self, method, randomize: bool = False):
         if method == "normal":
@@ -336,11 +336,9 @@ class Go2LidarEnv(DirectRLEnv):
         flat_idx = env_ids * num_cells + x_idx * y_cells + y_idx
         height_map = torch.full((num_envs * num_cells,), -torch.inf, device=self.device)
         height_map.scatter_reduce_(0, flat_idx, z_vals, reduce="amax", include_self=True)
+        height_map = height_map.reshape(num_envs, num_cells) + self.cfg.desired_base_height
         height_map = torch.where(torch.isfinite(height_map), -height_map, torch.zeros_like(height_map))
-        # torch.set_printoptions(precision=2, linewidth=1000, sci_mode=False)
         
-        # print(height_map + self.cfg.desired_base_height)
-        height_map = height_map.reshape(num_envs, num_cells) - self.cfg.desired_base_height
         if randomize:
             height_map = self._apply_offset(height_map)
             height_map += (2.0 * torch.rand_like(height_map) - 1.0) * float(0.01)
@@ -385,8 +383,7 @@ class Go2LidarEnv(DirectRLEnv):
         # y_cells = max(1, int((float(self.cfg.y_range[1]) - float(self.cfg.y_range[0])) / float(self.cfg.res)))
         # height_data_print = height_data.view(self.num_envs, x_cells, y_cells).flip(dims=[1]).unsqueeze(1)
         # torch.set_printoptions(precision=2, linewidth=1000, sci_mode=False)
-        
-        # print(height_data_print + self.cfg.desired_base_height)
+        # print(height_data_print[0] + self.cfg.desired_base_height)
         
         # clock_data = torch.vstack([self._phase_signal[:,0], self._phase_signal[:,1], self._phase_signal[:,2], self._phase_signal[:,3]]).T
         # # all the envs that are not moving, we put -1
