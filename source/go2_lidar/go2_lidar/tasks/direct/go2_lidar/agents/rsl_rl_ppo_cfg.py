@@ -349,7 +349,7 @@ class Go2LidarRoughCNNRNNPPORunnerCfg(RslRlOnPolicyRunnerCfg):
     num_steps_per_env = 24
     max_iterations = 100000
     save_interval = 50
-    experiment_name = "go2_lidar_cnn_rnn_seq"
+    experiment_name = "go2_lidar_cnn_rnn"
     obs_groups = {
         "actor": ["actor_proprio", "actor_grid"],
         "critic": ["critic_proprio", "critic_grid"],
