@@ -400,7 +400,7 @@ class Go2LidarRoughCNNRNNPPORunnerCfg(RslRlOnPolicyRunnerCfg):
         clip_param=0.2,
         entropy_coef=0.01,
         num_learning_epochs=5,
-        num_mini_batches=8,
+        num_mini_batches=16,
         learning_rate=1e-3,
         schedule="adaptive",
         gamma=0.99,

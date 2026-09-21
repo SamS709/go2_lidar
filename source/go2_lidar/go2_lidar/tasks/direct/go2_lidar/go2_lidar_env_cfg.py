@@ -183,8 +183,8 @@ class Go2LidarFlatEnvCfg(DirectRLEnvCfg):
             restitution=0.0,
         ),
         physx=sim_utils.PhysxCfg(
-            gpu_max_rigid_contact_count=512 * 1024,
-            gpu_max_rigid_patch_count=9503130,
+            gpu_max_rigid_contact_count=2**23,       # was 512*1024, now matches IsaacLab default
+            gpu_max_rigid_patch_count=9503130,        # leave as-is, plausibly headroom for rough terrain
             gpu_found_lost_pairs_capacity=2**21,
             gpu_found_lost_aggregate_pairs_capacity=2**25,
             gpu_total_aggregate_pairs_capacity=2**21,
@@ -205,7 +205,7 @@ class Go2LidarFlatEnvCfg(DirectRLEnvCfg):
     )
 
     # scene
-    scene: InteractiveSceneCfg = InteractiveSceneCfg(num_envs=4096, env_spacing=4.0, replicate_physics=True)
+    scene: InteractiveSceneCfg = InteractiveSceneCfg(num_envs=8192, env_spacing=4.0, replicate_physics=True)
 
     # events
     events: EventCfg = EventCfg()
