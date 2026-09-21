@@ -40,12 +40,12 @@ class Go2LidarEnv(DirectRLEnv):
         self._previous_previous_actions = torch.zeros(
             self.num_envs, gym.spaces.flatdim(self.single_action_space), device=self.device
         )
-        self.proprio_buffer_actor = torch.zeros(
-            self.num_envs, int(self.cfg.proprio_buffer_length), 45, device=self.device
-        )
-        self.proprio_buffer_critic = torch.zeros(
-            self.num_envs, int(self.cfg.proprio_buffer_length), 48, device=self.device
-        )
+        # self.proprio_buffer_actor = torch.zeros(
+        #     self.num_envs, int(self.cfg.proprio_buffer_length), 45, device=self.device
+        # )
+        # self.proprio_buffer_critic = torch.zeros(
+        #     self.num_envs, int(self.cfg.proprio_buffer_length), 48, device=self.device
+        # )
 
         # X/Y linear velocity and yaw angular velocity commands
         self.command_manager = CommandManager(self.cfg.commands, self)
@@ -292,7 +292,7 @@ class Go2LidarEnv(DirectRLEnv):
                 height_data = self._zero_heightmap_cells(height_data) 
             return height_data      
 
-    def _compute_height_data_from_cloud(self, randomize: bool = False):
+    def _compute_height_data_from_cloud(self, randomize: bool = False, apply_dropout: bool = True):
         """Compute flattened heightmap in lidar frame using cfg x/y bounds and cell size."""
         data = self._height_scanner.data
         ray_hits_w = data.ray_hits_w
@@ -343,15 +343,17 @@ class Go2LidarEnv(DirectRLEnv):
         height_map = torch.full((num_envs * num_cells,), -torch.inf, device=self.device)
         height_map.scatter_reduce_(0, flat_idx, z_vals, reduce="amax", include_self=True)
         height_map = height_map.reshape(num_envs, num_cells) + self.cfg.desired_base_height
-        height_map = torch.where(torch.isfinite(height_map), -height_map, torch.zeros_like(height_map))
-        
+        hit_mask = torch.isfinite(height_map)                       # capture BEFORE the where() destroys it
+        height_map = torch.where(hit_mask, -height_map, torch.zeros_like(height_map))
         if randomize:
             height_map = self._apply_offset(height_map)
             height_map += (2.0 * torch.rand_like(height_map) - 1.0) * float(0.01)
-            height_map = self._zero_heightmap_cells(height_map)            
-            
-        # Keep ordering consistent with lidar_debug flow.
-        return height_map
+        if apply_dropout:
+            height_map, dropout_mask = self._zero_heightmap_cells(height_map)
+            valid = hit_mask & dropout_mask
+        else:
+            valid = hit_mask
+        return height_map, valid
     
 
     def _apply_offset(self, height_map):
@@ -363,12 +365,15 @@ class Go2LidarEnv(DirectRLEnv):
     def _zero_heightmap_cells(self, height_map):
         self.same_zeros_count += 1
         if self.same_zeros_count == self.reset_zeros_freq:
-            self.reset_zeros_freq = int(torch.randint(1, self.cfg.max_reset_zeros_freq + 1, (1,), device=self.device).item())            
-            self.same_zeros_count = 0   
+            self.reset_zeros_freq = int(torch.randint(1, self.cfg.max_reset_zeros_freq + 1, (1,), device=self.device).item())
+            self.same_zeros_count = 0
             self.sampled_indices = torch.multinomial(self.gaussian_prob_heightmap, self.cfg.n_zeros, replacement=True)
         height_map_actor = height_map.clone()
+        valid = torch.ones_like(height_map, dtype=torch.bool)
         height_map_actor[:, self.sampled_indices] = 0.0
-        return height_map_actor
+        valid[:, self.sampled_indices] = False
+        return height_map_actor, valid
+
     
     def is_on_terrain(self, terrain_names: list[str]) -> torch.Tensor:
         mask = torch.zeros(self.num_envs, dtype=torch.bool, device=self.device)
@@ -647,6 +652,10 @@ class Go2LidarEnv(DirectRLEnv):
         # reset phase
         # self._phase_signal[env_ids] = self._phase_offset[env_ids].clone()
         # self._phase_signal[env_ids] = self._phase_signal[env_ids]  % 1.0
+        
+        # Reset buffers
+        # self.proprio_buffer_actor[reset_env_ids] = 0.0
+        # self.proprio_buffer_critic[reset_env_ids] = 0.0
         
         # Reset robot state
         joint_pos = self._robot.data.default_joint_pos[reset_env_ids]

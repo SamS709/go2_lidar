@@ -41,27 +41,23 @@ class Go2LidarCNNEnv(Go2LidarEnv):
         x_cells = max(1, int((float(self.cfg.x_range[1]) - float(self.cfg.x_range[0])) / float(self.cfg.res)))
         y_cells = max(1, int((float(self.cfg.y_range[1]) - float(self.cfg.y_range[0])) / float(self.cfg.res)))
 
-        height_data = self._compute_height_data_from_cloud(randomize=False)
-        height_data_actor = self._compute_height_data_from_cloud(randomize=self.cfg.randomize)
+        height_data, valid_critic = self._compute_height_data_from_cloud(randomize=False, apply_dropout=False)   # clean, privileged
+        height_data_actor, valid_actor = self._compute_height_data_from_cloud(randomize=self.cfg.randomize, apply_dropout=True)
+
         height_data = self._sanitize_tensor(height_data, "height_data", clamp_abs=10.0)
         height_data_actor = self._sanitize_tensor(height_data_actor, "height_data_actor", clamp_abs=10.0)
-        height_data = height_data.view(self.num_envs, x_cells, y_cells).flip(dims=[1]).unsqueeze(1)
-        height_data_actor = height_data_actor.view(self.num_envs, x_cells, y_cells).flip(dims=[1]).unsqueeze(1)
-        # height_data_actor = torch.zeros_like(height_data_actor, device=self.device)
+
+        height_data = height_data.view(self.num_envs, x_cells, y_cells).flip(dims=[1])
+        height_data_actor = height_data_actor.view(self.num_envs, x_cells, y_cells).flip(dims=[1])
+        valid_critic = valid_critic.view(self.num_envs, x_cells, y_cells).flip(dims=[1]).float()
+        valid_actor = valid_actor.view(self.num_envs, x_cells, y_cells).flip(dims=[1]).float()
+
+        actor_grid = torch.stack([height_data_actor, valid_actor], dim=1)     # (N, 2, x_cells, y_cells)
+        critic_grid = torch.stack([height_data, valid_critic], dim=1)
         torch.set_printoptions(precision=2, linewidth=1000, sci_mode=False)
-        # print(height_data_actor[0])
-        # print(self._rots)
-        # print(self._offsets)
-        # print(self.reset_zeros_freq)
-        # print(height_data + 0.28)
-        # print(height_data_actor + 0.28)
-        
-        # clock_data = torch.vstack([self._phase_signal[:,0], self._phase_signal[:,1], self._phase_signal[:,2], self._phase_signal[:,3]]).T
-        # all the envs that are not moving, we put -1
-        # print(clock_data)
-        # should_move = torch.linalg.norm(self.command_manager.get_command("base_velocity"), dim=1) > 0.01
-        # clock_data[:, :] = clock_data[:, :]*should_move.unsqueeze(1).expand(-1, 4) + -1.0* ~should_move.unsqueeze(1).expand(-1, 4)
-        # Actor (student) proprio observations — limited/noisy proprio inputs used by policy.
+        print(actor_grid[0])
+
+
         actor_proprio = torch.cat(
             [
                 self._robot.data.root_ang_vel_b
@@ -98,14 +94,14 @@ class Go2LidarCNNEnv(Go2LidarEnv):
             dim=-1,
         )
         critic_proprio = self._sanitize_tensor(critic_proprio, "critic_proprio", clamp_abs=100.0)
-        self._update_proprio_buffers(actor_proprio, critic_proprio)
+        # self._update_proprio_buffers(actor_proprio, critic_proprio)
 
         # Update previous actions and return unified observation dict (flat keys for runner grouping).
         self._previous_actions = self._actions.clone()
 
         return {
-            "actor_proprio": self.proprio_buffer_actor.reshape(self.num_envs, -1),
-            "actor_grid": height_data_actor,
-            "critic_proprio": self.proprio_buffer_critic.reshape(self.num_envs, -1),
-            "critic_grid": height_data,
+            "actor_proprio": actor_proprio,
+            "actor_grid": actor_grid,
+            "critic_proprio": critic_proprio,
+            "critic_grid": critic_grid,
         }
