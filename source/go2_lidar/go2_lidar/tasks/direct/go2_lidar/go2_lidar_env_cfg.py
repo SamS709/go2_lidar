@@ -363,7 +363,7 @@ class Go2LidarRoughEnvCfg(Go2LidarFlatEnvCfg):
     
     height_map_dist = 1.0
     res = 0.1
-    x_range = [-0.5, 0.5]
+    x_range = [-0.3, 0.5]
     y_range = [-0.5, 0.5]
     
     sigma = 4.00

@@ -54,8 +54,8 @@ class Go2LidarCNNEnv(Go2LidarEnv):
 
         actor_grid = torch.stack([height_data_actor, valid_actor], dim=1)     # (N, 2, x_cells, y_cells)
         critic_grid = torch.stack([height_data, valid_critic], dim=1)
-        torch.set_printoptions(precision=2, linewidth=1000, sci_mode=False)
-        print(actor_grid[0])
+        # torch.set_printoptions(precision=2, linewidth=1000, sci_mode=False)
+        # print(actor_grid[0])
 
 
         actor_proprio = torch.cat(
