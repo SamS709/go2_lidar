@@ -241,8 +241,8 @@ class Go2LidarEnv(DirectRLEnv):
         
 
     def _apply_action(self):
-        # self._robot.set_joint_position_target(self._processed_actions)
-        self._robot.set_joint_position_target(self._robot.data.default_joint_pos)    
+        self._robot.set_joint_position_target(self._processed_actions)
+        # self._robot.set_joint_position_target(self._robot.data.default_joint_pos)    
         
     def _compute_height_data(self, method, randomize: bool = False):
         if method == "normal":
