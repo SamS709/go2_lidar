@@ -29,6 +29,9 @@ class Go2LidarEnv(DirectRLEnv):
 
     def __init__(self, cfg: Go2LidarFlatEnvCfg | Go2LidarRoughEnvCfg, render_mode: str | None = None, **kwargs):
         super().__init__(cfg, render_mode, **kwargs)
+        
+     
+
 
         
 

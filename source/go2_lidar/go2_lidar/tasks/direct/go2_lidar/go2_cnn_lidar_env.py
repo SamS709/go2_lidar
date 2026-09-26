@@ -98,6 +98,11 @@ class Go2LidarCNNEnv(Go2LidarEnv):
 
         # Update previous actions and return unified observation dict (flat keys for runner grouping).
         self._previous_actions = self._actions.clone()
+        
+        if self.cfg.delay:
+            actor_proprio = self._buffer.compute(actor_proprio)
+            actor_grid = self._grid_buffer.compute(actor_grid)
+
 
         return {
             "actor_proprio": actor_proprio,
