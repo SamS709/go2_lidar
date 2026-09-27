@@ -58,7 +58,7 @@ class Go2LidarCNNEnv(Go2LidarEnv):
         # print(actor_grid[0])
 
 
-        actor_proprio = torch.cat(
+        actor_proprio_delayed = torch.cat(
             [
                 self._robot.data.root_ang_vel_b
                 + (2.0 * torch.rand_like(self._robot.data.root_lin_vel_b) - 1.0) * float(0.1) * self.cfg.randomize,
@@ -70,13 +70,24 @@ class Go2LidarCNNEnv(Go2LidarEnv):
                 + (2.0 * torch.rand_like(self._robot.data.default_joint_pos) - 1.0) * float(0.01) * self.cfg.randomize,
                 self._robot.data.joint_vel
                 + (2.0 * torch.rand_like(self._robot.data.joint_vel) - 1.0) * float(0.1) * self.cfg.randomize,
-                self._actions,
                 # clock_data
             ],
             dim=-1,
         )
-        actor_proprio = self._sanitize_tensor(actor_proprio, "actor_proprio", clamp_abs=100.0)
         
+        actor_proprio_delayed = self._sanitize_tensor(actor_proprio_delayed, "actor_proprio", clamp_abs=100.0)
+        
+        if self.cfg.delay:
+            actor_proprio = self._buffer.compute(actor_proprio_delayed)
+            actor_grid = self._grid_buffer.compute(actor_grid)
+            
+        actor_proprio = torch.cat(
+            [
+                actor_proprio_delayed,
+                self._actions,
+            ],
+            dim=-1
+        )
         # Critic (privileged) proprio observations — include privileged sensors like base linear velocity,
         # contact flags and other privileged terms useful for value estimation.
 
@@ -98,11 +109,6 @@ class Go2LidarCNNEnv(Go2LidarEnv):
 
         # Update previous actions and return unified observation dict (flat keys for runner grouping).
         self._previous_actions = self._actions.clone()
-        
-        if self.cfg.delay:
-            actor_proprio = self._buffer.compute(actor_proprio)
-            actor_grid = self._grid_buffer.compute(actor_grid)
-
 
         return {
             "actor_proprio": actor_proprio,
