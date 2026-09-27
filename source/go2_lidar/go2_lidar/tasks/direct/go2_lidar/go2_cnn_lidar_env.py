@@ -64,7 +64,6 @@ class Go2LidarCNNEnv(Go2LidarEnv):
                 + (2.0 * torch.rand_like(self._robot.data.root_lin_vel_b) - 1.0) * float(0.1) * self.cfg.randomize,
                 self._robot.data.projected_gravity_b
                 + (2.0 * torch.rand_like(self._robot.data.projected_gravity_b) - 1.0) * float(0.05) * self.cfg.randomize,
-                self.command_manager.get_command("base_velocity"),
                 self._robot.data.joint_pos
                 - self._robot.data.default_joint_pos
                 + (2.0 * torch.rand_like(self._robot.data.default_joint_pos) - 1.0) * float(0.01) * self.cfg.randomize,
@@ -84,6 +83,7 @@ class Go2LidarCNNEnv(Go2LidarEnv):
         actor_proprio = torch.cat(
             [
                 actor_proprio_delayed,
+                self.command_manager.get_command("base_velocity"),
                 self._actions,
             ],
             dim=-1
