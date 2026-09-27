@@ -645,11 +645,11 @@ class Go2LidarEnv(DirectRLEnv):
         if self.cfg.delay == True:
             self._buffer.reset(env_ids.tolist())
             self._buffer.set_time_lag(
-                    torch.randint(low=0, high=self.cfg.history_length, size=(self.num_envs,), device=self.device)
+                    torch.randint(low=0, high=self.cfg.history_length+1, size=(self.num_envs,), device=self.device)
                 )
             self._grid_buffer.reset(env_ids.tolist())
             self._grid_buffer.set_time_lag(
-                    torch.randint(low=0, high=self.cfg.history_length, size=(self.num_envs,), device=self.device)
+                    torch.randint(low=0, high=self.cfg.history_length+1, size=(self.num_envs,), device=self.device)
                 )
             
         # reset phase
