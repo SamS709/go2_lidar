@@ -337,7 +337,7 @@ class Go2LidarFlatSceneCfg(InteractiveSceneCfg):
 @configclass
 class CurriculumCfg:
     """Curriculum terms for the MDP."""
-    CurriculumTermCfg(
+    terrain_level = CurriculumTermCfg(
         func=terrain_levels_vel,   # the standard manager-based term
         params={"asset_cfg": SceneEntityCfg("robot")},
     )
@@ -631,6 +631,6 @@ class Go2LidarRoughEnvCfg(Go2LidarFlatEnvCfg):
         pattern_cfg=patterns.LidarPatternCfg(
             channels=64, vertical_fov_range=[0.0, 90.0], horizontal_fov_range=[-180, 180], horizontal_res=2.0
         ),
-        max_distance=2.0,
+        max_distance=1.0,
         debug_vis=False,
     )

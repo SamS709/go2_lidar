@@ -38,5 +38,5 @@ def terrain_levels_vel(
     # update terrain levels
     terrain.update_env_origins(env_ids, move_up, move_down)
     # return the mean terrain level
-    print("coucou")
+    # print("coucou")
     return torch.mean(terrain.terrain_levels.float())
