@@ -28,6 +28,253 @@ from isaaclab.terrains.terrain_generator_cfg import TerrainGeneratorCfg
 from .utils import terrain_levels_vel
 
 
+ROUGH_TERRAINS_CFG = TerrainGeneratorCfg(
+    curriculum=True,
+    size=(8.0, 8.0),
+    border_width=20.0,
+    num_rows=10,
+    num_cols=20,
+    horizontal_scale=0.1,
+    vertical_scale=0.005,
+    slope_threshold=0.75,
+    use_cache=False,
+    sub_terrains={
+        "flat": terrain_gen.MeshPlaneTerrainCfg(
+            proportion=0.1
+            # proportion=0.0
+        ),
+        "boxes_1": terrain_gen.MeshRandomGridTerrainCfg(
+            proportion=0.05, 
+            # proportion=0.0,
+            grid_width=0.45, 
+            grid_height_range=(0.05, 0.15), 
+            # grid_height_range=(0.15, 0.15), 
+            platform_width=2.0,
+        ),
+        "boxes_2": terrain_gen.MeshRandomGridTerrainCfg(
+            proportion=0.05, 
+            # proportion=0.0,
+            grid_width=0.92, 
+            grid_height_range=(0.05, 0.15), 
+            # grid_height_range=(0.15, 0.15), 
+            platform_width=2.0,
+        ),
+        "star_10": terrain_gen.MeshStarTerrainCfg(
+            proportion=0.05, 
+            # proportion=0.0,
+            num_bars=10, bar_width_range=(0.15, 0.20), bar_height_range=(0.05, 0.15), platform_width=2.0,
+        ),
+        "star_5": terrain_gen.MeshStarTerrainCfg(
+            proportion=0.05, 
+            # proportion=0.0,
+            num_bars=5, bar_width_range=(0.15, 0.20), bar_height_range=(0.05, 0.15), platform_width=2.0,
+        ),
+        "random_rough_1": terrain_gen.HfRandomUniformTerrainCfg(
+            proportion=0.05, 
+            # proportion=0.0,
+            noise_range=(0.01, 0.05), noise_step=0.02, border_width=0.25
+        ),
+        "random_rough_2": terrain_gen.HfRandomUniformTerrainCfg(
+            proportion=0.05, 
+            # proportion=0.0,
+            noise_range=(0.01, 0.02), noise_step=0.01, border_width=0.25
+        ),
+        
+        "hf_pyramid_slope": terrain_gen.HfPyramidSlopedTerrainCfg(
+            proportion=0.1, 
+            # proportion=0.0,
+            slope_range=(0.2, 0.4), platform_width=2.0, border_width=0.25
+        ),
+        "hf_pyramid_slope_inv": terrain_gen.HfInvertedPyramidSlopedTerrainCfg(
+            proportion=0.1, 
+            # proportion=0.0,
+            slope_range=(0.2, 0.4), platform_width=2.0, border_width=0.25
+        ),
+        "pyramid_stairs_25": terrain_gen.MeshPyramidStairsTerrainCfg(
+            proportion=0.05,
+            # proportion=0.0,
+            step_height_range=(0.05, 0.25), step_width=0.25,
+            platform_width=3.0, border_width=1.0, holes=False,
+        ),
+        "pyramid_stairs_30": terrain_gen.MeshPyramidStairsTerrainCfg(
+            proportion=0.05,
+            # proportion=0.0,
+            step_height_range=(0.05, 0.25), step_width=0.3,
+            platform_width=3.0, border_width=1.0, holes=False,
+        ),
+        "pyramid_stairs_35": terrain_gen.MeshPyramidStairsTerrainCfg(
+            proportion=0.05,
+            # proportion=0.0,
+            step_height_range=(0.05, 0.25), step_width=0.35,
+            platform_width=3.0, border_width=1.0, holes=False,
+        ),
+        "pyramid_stairs_40": terrain_gen.MeshPyramidStairsTerrainCfg(
+            proportion=0.05,
+            # proportion=0.0,
+            step_height_range=(0.05, 0.25), step_width=0.4,
+            platform_width=3.0, border_width=1.0, holes=False,
+        ),
+        "pyramid_stairs_inv_25": terrain_gen.MeshInvertedPyramidStairsTerrainCfg(
+            proportion=0.05, 
+            # proportion=1.0,
+            step_height_range=(0.05, 0.25), step_width=0.25,
+            platform_width=3.0, border_width=1.0, holes=False,
+        ),
+        "pyramid_stairs_inv_30": terrain_gen.MeshInvertedPyramidStairsTerrainCfg(
+            proportion=0.05, 
+            # proportion=1.0,
+            step_height_range=(0.05, 0.25), step_width=0.30,
+            platform_width=3.0, border_width=1.0, holes=False,
+        ),
+        "pyramid_stairs_inv_35": terrain_gen.MeshInvertedPyramidStairsTerrainCfg(
+            proportion=0.05, 
+            # proportion=1.0,
+            step_height_range=(0.05, 0.25), step_width=0.35,
+            platform_width=3.0, border_width=1.0, holes=False,
+        ),
+        "pyramid_stairs_inv_40": terrain_gen.MeshInvertedPyramidStairsTerrainCfg(
+            proportion=0.05, 
+            # proportion=1.0,
+            step_height_range=(0.05, 0.25), step_width=0.4,
+            platform_width=3.0, border_width=1.0, holes=False,
+        ),
+    },
+)
+# ROUGH_TERRAINS_CFG = TerrainGeneratorCfg(
+#     curriculum=True,
+
+#     size=(8.0, 8.0),
+#     border_width=4.0,
+
+#     num_rows=10,
+#     num_cols=20,
+
+#     horizontal_scale=0.1,
+#     vertical_scale=0.005,
+
+#     slope_threshold=0.75,
+
+#     use_cache=False,
+
+#     sub_terrains={
+
+#         "flat": terrain_gen.MeshPlaneTerrainCfg(
+#             proportion=0.1,
+#         ),
+
+#         "boxes1": terrain_gen.MeshRandomGridTerrainCfg(
+#             proportion=0.05,
+#             grid_width=0.45,
+#             grid_height_range=(0.05, 0.15),
+#             platform_width=2.0,
+#         ),
+        
+#         "boxes2": terrain_gen.MeshRandomGridTerrainCfg(
+#             proportion=0.05,
+#             grid_width=0.46,
+#             grid_height_range=(0.05, 0.15),
+#             platform_width=2.0,
+#         ),
+
+#         "star": terrain_gen.MeshStarTerrainCfg(
+#             proportion=0.1,
+#             num_bars=10,
+#             bar_width_range=(0.15, 0.20),
+#             bar_height_range=(0.05, 0.15),
+#             platform_width=2.0,
+#         ),
+
+#         "random_rough": terrain_gen.HfRandomUniformTerrainCfg(
+#             proportion=0.1,
+#             noise_range=(0.02, 0.06),
+#             noise_step=0.02,
+#             border_width=0.25,
+#         ),
+
+#         "hf_pyramid_slope": terrain_gen.HfPyramidSlopedTerrainCfg(
+#             proportion=0.1,
+#             slope_range=(0.2, 0.4),
+#             platform_width=2.0,
+#             border_width=0.25,
+#         ),
+
+#         "hf_pyramid_slope_inv": terrain_gen.HfInvertedPyramidSlopedTerrainCfg(
+#             proportion=0.1,
+#             slope_range=(0.2, 0.4),
+#             platform_width=2.0,
+#             border_width=0.25,
+#         ),
+
+#         "pyramid_stairs": terrain_gen.MeshPyramidStairsTerrainCfg(
+#             proportion=0.2,
+#             step_height_range=(0.05, 0.25),
+#             step_width=0.3,
+#             platform_width=3.0,
+#             border_width=1.0,
+#             holes=False,
+#         ),
+
+#         "pyramid_stairs_inv": terrain_gen.MeshInvertedPyramidStairsTerrainCfg(
+#             proportion=0.2,
+#             step_height_range=(0.05, 0.25),
+#             step_width=0.3,
+#             platform_width=3.0,
+#             border_width=1.0,
+#             holes=False,
+#         ),
+#     },
+# )
+
+
+@configclass
+class Go2LidarRoughSceneCfg(InteractiveSceneCfg):
+    """Scene configuration for the rough Go2 environment."""
+
+    terrain = TerrainImporterCfg(
+        prim_path="/World/ground",
+
+        terrain_type="generator",
+        terrain_generator=ROUGH_TERRAINS_CFG,
+
+        max_init_terrain_level=5,
+
+        collision_group=-1,
+
+        physics_material=sim_utils.RigidBodyMaterialCfg(
+            friction_combine_mode="multiply",
+            restitution_combine_mode="multiply",
+            static_friction=1.0,
+            dynamic_friction=1.0,
+        ),
+
+        visual_material=sim_utils.MdlFileCfg(
+            mdl_path="{NVIDIA_NUCLEUS_DIR}/Materials/Base/Architecture/Shingles_01.mdl",
+            project_uvw=True,
+        ),
+
+        debug_vis=False,
+    )
+    
+    
+
+@configclass
+class Go2LidarFlatSceneCfg(InteractiveSceneCfg):
+    """Scene configuration for the flat Go2 environment."""
+
+    terrain = TerrainImporterCfg(
+        prim_path="/World/ground",
+        terrain_type="plane",
+        collision_group=-1,
+        physics_material=sim_utils.RigidBodyMaterialCfg(
+            friction_combine_mode="multiply",
+            restitution_combine_mode="multiply",
+            static_friction=1.0,
+            dynamic_friction=1.0,
+            restitution=0.0,
+        ),
+        debug_vis=False,
+    )
+
 @configclass
 class CurriculumCfg:
     """Curriculum terms for the MDP."""
@@ -43,8 +290,8 @@ class CommandsCfg:
 
     base_velocity = mdp.UniformVelocityCommandCfg(
         asset_name="robot",
-        resampling_time_range=(10.0, 10.0),
-        rel_standing_envs=0.05,
+        resampling_time_range=(2.0, 10.0),
+        rel_standing_envs=0.1,
         heading_command=True,
         heading_control_stiffness=0.5,
         debug_vis=False,
@@ -63,13 +310,14 @@ class EventCfg:
      # startup
     physics_material = EventTerm(
         func=mdp.randomize_rigid_body_material,
-        mode="reset",
+        mode="startup",
         params={
-            "asset_cfg": SceneEntityCfg("robot", body_names=".*"),
+            "asset_cfg": SceneEntityCfg("robot", body_names=".*_foot"),
             "static_friction_range": (0.3, 1.2),
             "dynamic_friction_range": (0.3, 1.2),
             "restitution_range": (0.0, 0.15),
             "num_buckets": 64,
+            "make_consistent": True,
         },
     )
 
@@ -92,15 +340,15 @@ class EventCfg:
         },
     )
     
-    base_external_force_torque = EventTerm(
-        func=mdp.apply_external_force_torque,
-        mode="reset",
-        params={
-            "asset_cfg": SceneEntityCfg("robot", body_names="base"),
-            "force_range": (-5.0, 5.0),
-            "torque_range": (-5.0, 5.0),
-        },
-    )
+    # base_external_force_torque = EventTerm(
+    #     func=mdp.apply_external_force_torque,
+    #     mode="reset",
+    #     params={
+    #         "asset_cfg": SceneEntityCfg("robot", body_names="base"),
+    #         "force_range": (-5.0, 5.0),
+    #         "torque_range": (-5.0, 5.0),
+    #     },
+    # )
 
     reset_base = EventTerm(
         func=mdp.reset_root_state_uniform,
@@ -142,9 +390,9 @@ class EventCfg:
     mode="reset",
     params={
         "asset_cfg": SceneEntityCfg("robot", joint_names=".*"),
-        "stiffness_distribution_params": (-2.0, 2.0),
-        "damping_distribution_params": (-0.5, 0.5),
-        "operation": "add",
+        "stiffness_distribution_params": (0.8, 1.2),
+        "damping_distribution_params": (0.8, 1.2),
+        "operation": "scale",
         "distribution": "uniform",
     },
     )
@@ -190,22 +438,13 @@ class Go2LidarFlatEnvCfg(DirectRLEnvCfg):
             gpu_total_aggregate_pairs_capacity=2**21,
         ),
     )
-    terrain = TerrainImporterCfg(
-        prim_path="/World/ground",
-        terrain_type="plane",
-        collision_group=-1,
-        physics_material=sim_utils.RigidBodyMaterialCfg(
-            friction_combine_mode="multiply",
-            restitution_combine_mode="multiply",
-            static_friction=1.0,
-            dynamic_friction=1.0,
-            restitution=0.0,
-        ),
-        debug_vis=False,
-    )
-
     # scene
-    scene: InteractiveSceneCfg = InteractiveSceneCfg(num_envs=8192, env_spacing=4.0, replicate_physics=True)
+    
+    scene: Go2LidarFlatSceneCfg = Go2LidarFlatSceneCfg(
+        num_envs=8192,
+        env_spacing=4.0,
+        replicate_physics=True,
+    )
 
     # events
     events: EventCfg = EventCfg()
@@ -269,8 +508,6 @@ class Go2LidarFlatEnvCfg(DirectRLEnvCfg):
     # feet_dist_threshold = 0.25
     
 
-
-
 @configclass
 class Go2LidarRoughEnvCfg(Go2LidarFlatEnvCfg):
     # env
@@ -279,80 +516,13 @@ class Go2LidarRoughEnvCfg(Go2LidarFlatEnvCfg):
     curriculum: CurriculumCfg = CurriculumCfg()
     
     
-    ROUGH_TERRAINS_CFG = TerrainGeneratorCfg(
-        curriculum=True,
-        size=(8.0, 8.0),
-        border_width=20.0,
-        num_rows=10,
-        num_cols=20,
-        horizontal_scale=0.1,
-        vertical_scale=0.005,
-        slope_threshold=0.75,
-        use_cache=False,
-        sub_terrains={
-            "flat": terrain_gen.MeshPlaneTerrainCfg(
-                proportion=0.1
-                # proportion=0.0
-            ),
-            "boxes": terrain_gen.MeshRandomGridTerrainCfg(
-                proportion=0.1, 
-                # proportion=0.0,
-                grid_width=0.45, 
-                grid_height_range=(0.05, 0.15), 
-                # grid_height_range=(0.15, 0.15), 
-                platform_width=2.0,
-            ),
-            "star": terrain_gen.MeshStarTerrainCfg(
-                proportion=0.1, 
-                # proportion=0.0,
-                num_bars=10, bar_width_range=(0.15, 0.20), bar_height_range=(0.05, 0.15), platform_width=2.0,
-            ),
-            "random_rough": terrain_gen.HfRandomUniformTerrainCfg(
-                proportion=0.1, 
-                # proportion=0.0,
-                noise_range=(0.02, 0.06), noise_step=0.02, border_width=0.25
-            ),
-            "hf_pyramid_slope": terrain_gen.HfPyramidSlopedTerrainCfg(
-                proportion=0.1, 
-                # proportion=0.0,
-                slope_range=(0.2, 0.4), platform_width=2.0, border_width=0.25
-            ),
-            "hf_pyramid_slope_inv": terrain_gen.HfInvertedPyramidSlopedTerrainCfg(
-                proportion=0.1, 
-                # proportion=0.0,
-                slope_range=(0.2, 0.4), platform_width=2.0, border_width=0.25
-            ),
-            "pyramid_stairs": terrain_gen.MeshPyramidStairsTerrainCfg(
-                proportion=0.2,
-                # proportion=0.0,
-                step_height_range=(0.05, 0.25), step_width=0.3,
-                platform_width=3.0, border_width=1.0, holes=False,
-            ),
-            "pyramid_stairs_inv": terrain_gen.MeshInvertedPyramidStairsTerrainCfg(
-                proportion=0.2, 
-                # proportion=1.0,
-                step_height_range=(0.05, 0.25), step_width=0.3,
-                platform_width=3.0, border_width=1.0, holes=False,
-            ),
-        },
-    )
-    terrain = TerrainImporterCfg(
-        prim_path="/World/ground",
-        terrain_type="generator",
-        terrain_generator=ROUGH_TERRAINS_CFG,
-        max_init_terrain_level=5,
-        collision_group=-1,
-        physics_material=sim_utils.RigidBodyMaterialCfg(
-            friction_combine_mode="multiply",
-            restitution_combine_mode="multiply",
-            static_friction=1.0,
-            dynamic_friction=1.0,
-        ),
-        visual_material=sim_utils.MdlFileCfg(
-            mdl_path="{NVIDIA_NUCLEUS_DIR}/Materials/Base/Architecture/Shingles_01.mdl",
-            project_uvw=True,
-        ),
-        debug_vis=False,
+
+    # scene
+    
+    scene: Go2LidarRoughSceneCfg = Go2LidarRoughSceneCfg(
+        num_envs=8192,
+        env_spacing=4.0,
+        replicate_physics=True,
     )
     #  # Heightmap configuration
     # New grid-based heightmap config (values are in lidar frame).
@@ -388,61 +558,3 @@ class Go2LidarRoughEnvCfg(Go2LidarFlatEnvCfg):
         max_distance=2.0,
         debug_vis=False,
     )
-    # height_map_cells = int(2 * height_map_dist * res) ** 2  
-    # observation_space = 53 + height_map_cells  
-    
-    # lidar_range = height_map_dist * 3.0 # * 1.4142135623730951  # sqrt(2)
-
-    # New scanner path: multi-mesh ray-caster over /World.
-    # height_scanner = MultiMeshRayCasterCfg(
-    #     prim_path="/World/envs/env_.*/Robot/base",
-    #     update_period=1 / 60,
-    #     offset=MultiMeshRayCasterCfg.OffsetCfg(
-    #         pos=lidar_offset,
-    #         rot=lidar_rotation,
-    #     ),
-    #     mesh_prim_paths=["/World"],
-    #     ray_alignment="base",
-    #     pattern_cfg=patterns.LidarPatternCfg(
-    #         channels=64, vertical_fov_range=[-0.0, 90.0], horizontal_fov_range=[-180, 180], horizontal_res=2.0
-    #     ),
-    #     max_distance=4.0,
-    #     debug_vis=False,
-    # )
-    
-   
-    # height_scanner = RayCasterCfg(
-    #     prim_path="/World/envs/env_.*/Robot/base",
-    #     update_period=1 / 60,
-    #     offset=RayCasterCfg.OffsetCfg(
-    #         pos=lidar_offset,
-    #         rot=lidar_rotation,
-    #     ),
-    #     mesh_prim_paths=["/World/ground"],
-    #     ray_alignment="base",
-    #     pattern_cfg=patterns.LidarPatternCfg(
-    #         channels=128, vertical_fov_range=[-90.0, 90.0], horizontal_fov_range=[-180, 180], horizontal_res=2.0
-    #     ),
-    #     max_distance=lidar_range,
-    #     debug_vis=False,
-    # )
-
-    # Pre-computed quaternion (w, x, y, z) from euler angles (-pi, pi - 2.8782, -pi)
-
-    
-    
-    # the heightmap is 1.5 * 1, offseted by lidar offset + 0.25 on x such that it detects 1 metter in front of and 0.5 meters behind the lidar frame
-    # on the real robot, from the lidar frame: grid 0.5 meters left and right and 1 meter front and 0.5 meters behind
-    # Previous scanner path kept for reference (disabled):
-    # height_scanner = RayCasterCfg(
-    #     update_period=1 / 20,
-    #     prim_path="/World/envs/env_.*/Robot/base",
-    #     offset=RayCasterCfg.OffsetCfg(pos=(0.28945 + 0.25, 0.0, 0.5)),
-    #     # ray_alignment="base",
-    #     pattern_cfg=patterns.GridPatternCfg(resolution=0.1, size=[1.4, 0.9], ordering="yx"),
-    #     debug_vis=False,
-    #     mesh_prim_paths=["/World/ground"],
-    # )
-   
-
-    
