@@ -7,12 +7,16 @@ import isaaclab.envs.mdp as mdp
 import isaaclab.sim as sim_utils
 
 from isaaclab.assets import ArticulationCfg
+from isaaclab.utils.assets import ISAAC_NUCLEUS_DIR
+
 from isaaclab.envs import DirectRLEnvCfg
 from isaaclab.managers import EventTermCfg as EventTerm
 from isaaclab.managers import SceneEntityCfg
 from isaaclab.managers import CurriculumManager, CurriculumTermCfg
 from isaaclab.scene import InteractiveSceneCfg
 from isaaclab.sensors import ContactSensorCfg, MultiMeshRayCasterCfg, RayCasterCfg, patterns
+from isaaclab.markers import VisualizationMarkersCfg
+
 from isaaclab.sim import SimulationCfg
 from isaaclab.terrains import TerrainImporterCfg
 from isaaclab.utils import configclass
@@ -31,7 +35,7 @@ from .utils import terrain_levels_vel
 ROUGH_TERRAINS_CFG = TerrainGeneratorCfg(
     curriculum=True,
     size=(8.0, 8.0),
-    border_width=20.0,
+    border_width=1.0,
     num_rows=10,
     num_cols=20,
     horizontal_scale=0.1,
@@ -140,6 +144,31 @@ ROUGH_TERRAINS_CFG = TerrainGeneratorCfg(
         ),
     },
 )
+
+TEST_TERRAINS_CFG = TerrainGeneratorCfg(
+    curriculum=True,
+    size=(8.0, 8.0),
+    border_width=1.0,
+    num_rows=1,
+    num_cols=1,
+    horizontal_scale=0.1,
+    vertical_scale=0.005,
+    slope_threshold=0.75,
+    use_cache=False,
+    sub_terrains={
+        "boxes_1": terrain_gen.MeshRandomGridTerrainCfg(
+            proportion=1.0, 
+            # proportion=0.0,
+            grid_width=0.81, 
+            grid_height_range=(0.05, 0.15), 
+            # grid_height_range=(0.15, 0.15), 
+            platform_width=2.0,
+        ),
+    },
+)
+
+
+
 # ROUGH_TERRAINS_CFG = TerrainGeneratorCfg(
 #     curriculum=True,
 
@@ -235,6 +264,36 @@ class Go2LidarRoughSceneCfg(InteractiveSceneCfg):
 
         terrain_type="generator",
         terrain_generator=ROUGH_TERRAINS_CFG,
+
+        max_init_terrain_level=5,
+
+        collision_group=-1,
+
+        physics_material=sim_utils.RigidBodyMaterialCfg(
+            friction_combine_mode="multiply",
+            restitution_combine_mode="multiply",
+            static_friction=1.0,
+            dynamic_friction=1.0,
+        ),
+
+        visual_material=sim_utils.MdlFileCfg(
+            mdl_path="{NVIDIA_NUCLEUS_DIR}/Materials/Base/Architecture/Shingles_01.mdl",
+            project_uvw=True,
+        ),
+
+        debug_vis=False,
+    )
+    
+
+@configclass
+class Go2LidarTestSceneCfg(InteractiveSceneCfg):
+    """Scene configuration for the rough Go2 environment."""
+
+    terrain = TerrainImporterCfg(
+        prim_path="/World/ground",
+
+        terrain_type="generator",
+        terrain_generator=TEST_TERRAINS_CFG,
 
         max_init_terrain_level=5,
 
@@ -451,7 +510,16 @@ class Go2LidarFlatEnvCfg(DirectRLEnvCfg):
 
     # command
     commands: CommandsCfg = CommandsCfg()
-
+    env_marker_cfg = VisualizationMarkersCfg(
+        prim_path="/Visuals/envMarkers",
+        markers={
+            "env": sim_utils.UsdFileCfg(
+                usd_path=f"{ISAAC_NUCLEUS_DIR}/Props/UIElements/arrow_x.usd",
+                scale=(0.5, 0.5, 0.5),
+                visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.0, 0.0, 1.0)),
+            ),
+        },
+    )
     # robot
     robot: ArticulationCfg = UNITREE_GO2_CFG.replace(prim_path="/World/envs/env_.*/Robot")
     contact_sensor: ContactSensorCfg = ContactSensorCfg(
@@ -470,7 +538,7 @@ class Go2LidarFlatEnvCfg(DirectRLEnvCfg):
     
     
     
-    desired_base_height = 0.28
+    desired_base_height = 0.25
     
     # desired_step_freq = 1.4
     # desired_duty_factor = 0.65
@@ -518,12 +586,20 @@ class Go2LidarRoughEnvCfg(Go2LidarFlatEnvCfg):
     
 
     # scene
-    
-    scene: Go2LidarRoughSceneCfg = Go2LidarRoughSceneCfg(
-        num_envs=8192,
-        env_spacing=4.0,
-        replicate_physics=True,
-    )
+    test: bool = False
+    vis: bool = False
+    if test:
+        scene: Go2LidarTestSceneCfg = Go2LidarTestSceneCfg(
+            num_envs=8192,
+            env_spacing=4.0,
+            replicate_physics=True,
+        )
+    else:
+        scene: Go2LidarRoughSceneCfg = Go2LidarRoughSceneCfg(
+            num_envs=8192,
+            env_spacing=4.0,
+            replicate_physics=True,
+        )
     #  # Heightmap configuration
     # New grid-based heightmap config (values are in lidar frame).
     # NOTE: `res` is used as cell size in meters.

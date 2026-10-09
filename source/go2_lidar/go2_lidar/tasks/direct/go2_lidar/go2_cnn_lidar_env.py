@@ -51,11 +51,12 @@ class Go2LidarCNNEnv(Go2LidarEnv):
         height_data_actor = height_data_actor.view(self.num_envs, x_cells, y_cells).flip(dims=[1])
         valid_critic = valid_critic.view(self.num_envs, x_cells, y_cells).flip(dims=[1]).float()
         valid_actor = valid_actor.view(self.num_envs, x_cells, y_cells).flip(dims=[1]).float()
-
+        if self.cfg.vis:
+            torch.set_printoptions(precision=2, linewidth=1000, sci_mode=False)
+            print(height_data[self.vis_envs] + self.cfg.desired_base_height)
+            print(height_data[self.vis_envs].mean())
         actor_grid = torch.stack([height_data_actor, valid_actor], dim=1)     # (N, 2, x_cells, y_cells)
         critic_grid = torch.stack([height_data, valid_critic], dim=1)
-        # torch.set_printoptions(precision=2, linewidth=1000, sci_mode=False)
-        # print(actor_grid[0])
 
 
         actor_proprio_delayed = torch.cat(

@@ -14,6 +14,7 @@ import isaaclab.utils.math as math_utils
 from isaaclab.assets import Articulation
 from isaaclab.envs import DirectRLEnv
 from isaaclab.utils.buffers import DelayBuffer
+from isaaclab.markers import VisualizationMarkers
 from isaaclab.sensors import ContactSensor, RayCaster
 from isaaclab.managers import CommandManager, CurriculumManager
 from isaaclab.utils.math import quat_conjugate, quat_apply, quat_mul, quat_inv, quat_rotate_inverse
@@ -29,11 +30,7 @@ class Go2LidarEnv(DirectRLEnv):
 
     def __init__(self, cfg: Go2LidarFlatEnvCfg | Go2LidarRoughEnvCfg, render_mode: str | None = None, **kwargs):
         super().__init__(cfg, render_mode, **kwargs)
-        
-     
-
-
-        
+                
 
         # Joint position command (deviation from default joint positions)
         self._actions = torch.zeros(self.num_envs, gym.spaces.flatdim(self.single_action_space), device=self.device)
@@ -188,6 +185,9 @@ class Go2LidarEnv(DirectRLEnv):
         return torch.stack((x_coord, rotated_y, rotated_z), dim=-1)
 
     def _setup_scene(self):
+        if self.cfg.vis:
+            self.env_markers = VisualizationMarkers(self.cfg.env_marker_cfg)
+            self.vis_envs: torch.Tensor = torch.tensor([13])
         self._robot = Articulation(self.cfg.robot)
         self.scene.articulations["robot"] = self._robot
         self._contact_sensor = ContactSensor(self.cfg.contact_sensor)
@@ -403,9 +403,16 @@ class Go2LidarEnv(DirectRLEnv):
 
     def _get_rewards(self) -> torch.Tensor:
         # linear velocity tracking
-        terrain_mask = (~self.is_on_terrain(["pyramid_stairs_25", "pyramid_stairs_inv_25", "pyramid_stairs_30", "pyramid_stairs_inv_30", "pyramid_stairs_35", "pyramid_stairs_inv_35", "pyramid_stairs_40", "pyramid_stairs_inv_40", ])).float()
+        if self.cfg.vis:
+            self.env_markers.visualize(
+                translations=self._robot.data.root_pos_w[self.vis_envs],
+                orientations=self._robot.data.root_quat_w[self.vis_envs],
+            )
+        if not self.cfg.test:
+            terrain_mask = (~self.is_on_terrain(["pyramid_stairs_25", "pyramid_stairs_inv_25", "pyramid_stairs_30", "pyramid_stairs_inv_30", "pyramid_stairs_35", "pyramid_stairs_inv_35", "pyramid_stairs_40", "pyramid_stairs_inv_40", ])).float()
+        else: 
+            terrain_mask = True
         # terrain_mask = (~self.is_on_terrain(["pyramid_stairs", "pyramid_stairs_inv"])).float()
-        print(self.build_col_to_subterrain())
         lin_vel_error = torch.sum(torch.square(self.command_manager.get_command("base_velocity")[:, :2] - self._robot.data.root_lin_vel_b[:, :2]), dim=1)
         lin_vel_error_mapped = torch.exp(-lin_vel_error / 0.25)
         # yaw rate tracking
