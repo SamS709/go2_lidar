@@ -84,7 +84,8 @@ class Go2LidarEnv(DirectRLEnv):
                 "def_pos",
                 "feet_to_hip",
                 "feet_grounded_stop",
-                "feet_vertical_surface"
+                "feet_vertical_surface",
+                "termination",
             ]
         }
         # Get specific body indices
@@ -542,6 +543,9 @@ class Go2LidarEnv(DirectRLEnv):
             should_move, torch.ones_like(feet_to_hip_distance), torch.full_like(feet_to_hip_distance, 3.0)
         )
         
+        # termination penalty
+        termination = self.reset_terminated.float()
+        
         
         rewards = {
             "track_lin_vel_xy_exp": lin_vel_error_mapped * self.cfg.lin_vel_reward_scale * self.step_dt,
@@ -562,7 +566,8 @@ class Go2LidarEnv(DirectRLEnv):
             "def_pos" : def_pos * self.cfg.def_pos_reward_scale * self.step_dt,
             "feet_to_hip" : feet_to_hip_distance * self.cfg.feet_to_hip_reward_scale * self.step_dt,
             "feet_grounded_stop": feet_ground_stop * self.cfg.feet_grounded_scale * self.step_dt,
-            "feet_vertical_surface" : feet_vertical_surface_contacts * self.cfg.feet_vertical_surface_contacts_reward_scale * self.step_dt
+            "feet_vertical_surface" : feet_vertical_surface_contacts * self.cfg.feet_vertical_surface_contacts_reward_scale * self.step_dt,
+            "termination": termination * self.cfg.termination_reward_scale,
         }
         reward = torch.sum(torch.stack(list(rewards.values())), dim=0)
         reward = self._sanitize_tensor(reward, "reward", clamp_abs=100.0)

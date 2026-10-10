@@ -349,7 +349,7 @@ class CommandsCfg:
 
     base_velocity = mdp.UniformVelocityCommandCfg(
         asset_name="robot",
-        resampling_time_range=(2.0, 10.0),
+        resampling_time_range=(10.0, 10.0),
         rel_standing_envs=0.1,
         heading_command=True,
         heading_control_stiffness=0.5,
@@ -569,6 +569,8 @@ class Go2LidarFlatEnvCfg(DirectRLEnvCfg):
     
     feet_to_hip_reward_scale = 1.0
     desired_hip_offset = 0.095
+    
+    termination_reward_scale = 5.0
     
     
     # feet distance
