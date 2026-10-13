@@ -411,6 +411,7 @@ class Go2LidarEnv(DirectRLEnv):
             )
         if not self.cfg.test:
             terrain_mask = (~self.is_on_terrain(["pyramid_stairs_25", "pyramid_stairs_inv_25", "pyramid_stairs_30", "pyramid_stairs_inv_30", "pyramid_stairs_35", "pyramid_stairs_inv_35", "pyramid_stairs_40", "pyramid_stairs_inv_40", ])).float()
+            # terrain_mask = (~self.is_on_terrain(["pyramid_stairs", "pyramid_stairs_inv"])).float()
         else: 
             terrain_mask = True
         # terrain_mask = (~self.is_on_terrain(["pyramid_stairs", "pyramid_stairs_inv"])).float()

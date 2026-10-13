@@ -35,7 +35,7 @@ from .utils import terrain_levels_vel
 ROUGH_TERRAINS_CFG = TerrainGeneratorCfg(
     curriculum=True,
     size=(8.0, 8.0),
-    border_width=1.0,
+    border_width=40.0,
     num_rows=10,
     num_cols=20,
     horizontal_scale=0.1,
@@ -570,7 +570,7 @@ class Go2LidarFlatEnvCfg(DirectRLEnvCfg):
     feet_to_hip_reward_scale = 1.0
     desired_hip_offset = 0.095
     
-    termination_reward_scale = 5.0
+    termination_reward_scale = 0.0
     
     
     # feet distance
