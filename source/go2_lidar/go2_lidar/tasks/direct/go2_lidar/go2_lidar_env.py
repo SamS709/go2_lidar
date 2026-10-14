@@ -599,6 +599,11 @@ class Go2LidarEnv(DirectRLEnv):
         self._previous_previous_actions[reset_env_ids] = 0.0
         # Sample new commands
         self.command_manager.reset(reset_env_ids)
+        term = self.command_manager.get_term("base_velocity")
+        upper = 10.0
+        lower = torch.empty(len(env_ids), device=self.device).uniform_(2.0, upper)  # one lower bound per env
+        # time_left_i ~ U(lower_i, upper)
+        term.time_left[env_ids] = lower + (upper - lower) * torch.rand(len(env_ids), device=self.device)
         if hasattr(self, "_rots_yaw"):
             num_resets = reset_env_ids.numel()
             self._rots_yaw[reset_env_ids] = torch.empty(num_resets, device=self.device).uniform_(-self.cfg.max_rot, self.cfg.max_rot)
