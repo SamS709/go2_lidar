@@ -49,7 +49,12 @@ class Go2LidarEnv(DirectRLEnv):
 
         # X/Y linear velocity and yaw angular velocity commands
         self.command_manager = CommandManager(self.cfg.commands, self)
+        
+        # curriculum manager: keep track of the ability of the robot to follow the command.
         self.curriculum_manager = CurriculumManager(self.cfg.curriculum, self)
+        self._cmd_path = torch.zeros(self.num_envs, device=self.device)
+        self._prog_path = torch.zeros(self.num_envs, device=self.device)
+        
         self._desired_hip_offset = torch.tensor([-self.cfg.desired_hip_offset, self.cfg.desired_hip_offset, -self.cfg.desired_hip_offset, self.cfg.desired_hip_offset], device=self.device)
         if self.cfg.delay == True:
             self._buffer = DelayBuffer(history_length=self.cfg.history_length, batch_size=self.num_envs, device=self.device)
@@ -85,7 +90,7 @@ class Go2LidarEnv(DirectRLEnv):
                 "feet_to_hip",
                 "feet_grounded_stop",
                 "feet_vertical_surface",
-                "termination",
+                # "termination",
             ]
         }
         # Get specific body indices
@@ -417,6 +422,14 @@ class Go2LidarEnv(DirectRLEnv):
         # terrain_mask = (~self.is_on_terrain(["pyramid_stairs", "pyramid_stairs_inv"])).float()
         lin_vel_error = torch.sum(torch.square(self.command_manager.get_command("base_velocity")[:, :2] - self._robot.data.root_lin_vel_b[:, :2]), dim=1)
         lin_vel_error_mapped = torch.exp(-lin_vel_error / 0.25)
+        # utils for the curriculum
+        cmd_xy = self.command_manager.get_command("base_velocity")[:, :2]
+        cmd_norm = torch.norm(cmd_xy, dim=1)
+        v_xy = self._robot.data.root_lin_vel_b[:, :2]
+        proj = (v_xy * cmd_xy).sum(dim=1) / cmd_norm.clamp(min=1e-6)       # speed along the commanded direction
+        proj = torch.minimum(proj.clamp(min=0.0), cmd_norm)                 # no credit for overshooting
+        self._cmd_path += cmd_norm * self.step_dt
+        self._prog_path += proj * self.step_dt
         # yaw rate tracking
         yaw_rate_error = torch.square(self.command_manager.get_command("base_velocity")[:, 2] - self._robot.data.root_ang_vel_b[:, 2])
         yaw_rate_error_mapped = torch.exp(-yaw_rate_error / 0.25)
@@ -545,7 +558,7 @@ class Go2LidarEnv(DirectRLEnv):
         )
         
         # termination penalty
-        termination = self.reset_terminated.float()
+        # termination = self.reset_terminated.float()
         
         
         rewards = {
@@ -568,7 +581,7 @@ class Go2LidarEnv(DirectRLEnv):
             "feet_to_hip" : feet_to_hip_distance * self.cfg.feet_to_hip_reward_scale * self.step_dt,
             "feet_grounded_stop": feet_ground_stop * self.cfg.feet_grounded_scale * self.step_dt,
             "feet_vertical_surface" : feet_vertical_surface_contacts * self.cfg.feet_vertical_surface_contacts_reward_scale * self.step_dt,
-            "termination": termination * self.cfg.termination_reward_scale,
+            # "termination": termination * self.cfg.termination_reward_scale,
         }
         reward = torch.sum(torch.stack(list(rewards.values())), dim=0)
         reward = self._sanitize_tensor(reward, "reward", clamp_abs=100.0)
@@ -586,14 +599,21 @@ class Go2LidarEnv(DirectRLEnv):
         return died, time_out
 
     def _reset_idx(self, env_ids: torch.Tensor | None):
+        
         reset_env_ids: torch.Tensor = self._robot._ALL_INDICES if env_ids is None else env_ids
         if reset_env_ids.numel() == self.num_envs:
             reset_env_ids = self._robot._ALL_INDICES
+        
+        # curriculum
         self.curriculum_manager.compute(env_ids=reset_env_ids)
+        self._cmd_path[reset_env_ids] = 0.0
+        self._prog_path[reset_env_ids] = 0.0
+        
         super()._reset_idx(reset_env_ids)
         if reset_env_ids.numel() == self.num_envs:
             # Spread out the resets to avoid spikes in training when many environments reset at a similar time
             self.episode_length_buf[:] = torch.randint_like(self.episode_length_buf, high=int(self.max_episode_length))
+            
         self._actions[reset_env_ids] = 0.0
         self._previous_actions[reset_env_ids] = 0.0
         self._previous_previous_actions[reset_env_ids] = 0.0
@@ -601,9 +621,10 @@ class Go2LidarEnv(DirectRLEnv):
         self.command_manager.reset(reset_env_ids)
         term = self.command_manager.get_term("base_velocity")
         upper = 10.0
-        lower = torch.empty(len(env_ids), device=self.device).uniform_(2.0, upper)  # one lower bound per env
+        min_sample_range = 2.0
+        lower = torch.empty(len(reset_env_ids), device=self.device).uniform_(min_sample_range, upper)  # one lower bound per env
         # time_left_i ~ U(lower_i, upper)
-        term.time_left[env_ids] = lower + (upper - lower) * torch.rand(len(env_ids), device=self.device)
+        term.time_left[env_ids] = lower + (upper - lower) * torch.rand(len(reset_env_ids), device=self.device)
         if hasattr(self, "_rots_yaw"):
             num_resets = reset_env_ids.numel()
             self._rots_yaw[reset_env_ids] = torch.empty(num_resets, device=self.device).uniform_(-self.cfg.max_rot, self.cfg.max_rot)

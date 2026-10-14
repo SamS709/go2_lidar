@@ -570,7 +570,7 @@ class Go2LidarFlatEnvCfg(DirectRLEnvCfg):
     feet_to_hip_reward_scale = 1.0
     desired_hip_offset = 0.095
     
-    termination_reward_scale = 0.0
+    # termination_reward_scale = 0.0
     
     
     # feet distance
