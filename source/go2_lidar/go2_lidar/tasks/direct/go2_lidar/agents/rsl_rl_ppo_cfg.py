@@ -405,6 +405,6 @@ class Go2LidarRoughCNNRNNPPORunnerCfg(RslRlOnPolicyRunnerCfg):
         gamma=0.99,
         lam=0.95,
         max_grad_norm=1.0,
-        entropy_coef=0.001,          
-        desired_kl=0.008,         
+        entropy_coef=0.01,          
+        desired_kl=0.01,         
     )
