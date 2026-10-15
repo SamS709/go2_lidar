@@ -10,7 +10,7 @@ from isaaclab.terrains import TerrainImporter
 from collections.abc import Sequence
 
 def terrain_levels_vel(env, env_ids, asset_cfg=SceneEntityCfg("robot")):
-    terrain = env._terrain                      # your own terrain object (old _setup_scene handling)
+    terrain = env.scene.terrain                      # your own terrain object (old _setup_scene handling)
     cmd_path = env._cmd_path[env_ids]
     ratio = env._prog_path[env_ids] / cmd_path.clamp(min=1e-6)
 
