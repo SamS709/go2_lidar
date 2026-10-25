@@ -18,7 +18,7 @@ def terrain_levels_vel(env, env_ids, asset_cfg=SceneEntityCfg("robot")):
     timed_out = env.reset_time_outs[env_ids] & ~died
     enough = cmd_path > 2.0                     # ignore standing / barely-commanded episodes
 
-    move_up = timed_out & enough & (ratio > 0.75)
+    move_up = timed_out & enough & (ratio > 0.65)
     move_down = died | (enough & (ratio < 0.4))
     move_down &= ~move_up
 

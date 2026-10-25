@@ -352,6 +352,7 @@ class CommandsCfg:
         resampling_time_range=(10.0, 10.0),
         rel_standing_envs=0.1,
         heading_command=True,
+        rel_heading_envs=1.0,
         heading_control_stiffness=0.5,
         debug_vis=False,
         ranges=mdp.UniformVelocityCommandCfg.Ranges(
@@ -546,7 +547,9 @@ class Go2LidarFlatEnvCfg(DirectRLEnvCfg):
 
     # reward scales
     lin_vel_reward_scale = 2.0
+    heading_rew_reward_scale = 0.50
     height_reward_scale = 1.0
+    progress_reward_scale = 1.5 
     yaw_rate_reward_scale = 0.5
     z_vel_reward_scale = -1.0
     ang_vel_reward_scale = -0.15
@@ -555,6 +558,7 @@ class Go2LidarFlatEnvCfg(DirectRLEnvCfg):
     joint_energy_reward_scale = -1e-4
     action_rate_reward_scale = -0.01
     action_rate_2_reward_scale = -0.001
+    
     
     feet_air_time_reward_scale = 0.01
     feet_grounded_scale = 1.0

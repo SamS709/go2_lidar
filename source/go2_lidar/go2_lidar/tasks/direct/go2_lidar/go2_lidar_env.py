@@ -90,6 +90,8 @@ class Go2LidarEnv(DirectRLEnv):
                 "feet_to_hip",
                 "feet_grounded_stop",
                 "feet_vertical_surface",
+                "heading_error",
+                "progress",
                 # "termination",
             ]
         }
@@ -420,19 +422,44 @@ class Go2LidarEnv(DirectRLEnv):
         else: 
             terrain_mask = True
         # terrain_mask = (~self.is_on_terrain(["pyramid_stairs", "pyramid_stairs_inv"])).float()
-        lin_vel_error = torch.sum(torch.square(self.command_manager.get_command("base_velocity")[:, :2] - self._robot.data.root_lin_vel_b[:, :2]), dim=1)
-        lin_vel_error_mapped = torch.exp(-lin_vel_error / 0.25)
+        term = self.command_manager.get_term("base_velocity")
+        cmd = self.command_manager.get_command("base_velocity")
+        cmd_xy = cmd[:, :2]
+        
+        #heading error (prevent robot from turning around in stairs climbing)
+        heading_err = torch.abs(math_utils.wrap_to_pi(term.heading_target - self._robot.data.heading_w))
+        heading_rew = torch.exp(-torch.square(heading_err) / 0.25) * term.is_heading_env.float()
+        
         # utils for the curriculum
-        cmd_xy = self.command_manager.get_command("base_velocity")[:, :2]
-        cmd_norm = torch.norm(cmd_xy, dim=1)
-        v_xy = self._robot.data.root_lin_vel_b[:, :2]
-        proj = (v_xy * cmd_xy).sum(dim=1) / cmd_norm.clamp(min=1e-6)       # speed along the commanded direction
-        proj = torch.minimum(proj.clamp(min=0.0), cmd_norm)                 # no credit for overshooting
-        self._cmd_path += cmd_norm * self.step_dt
-        self._prog_path += proj * self.step_dt
+        ref_yaw = torch.where(term.is_heading_env, term.heading_target, self._robot.data.heading_w)
+        c, s = torch.cos(ref_yaw), torch.sin(ref_yaw)
+        cmd_w = torch.stack(
+            (c * cmd_xy[:, 0] - s * cmd_xy[:, 1],
+            s * cmd_xy[:, 0] + c * cmd_xy[:, 1]),
+            dim=1,
+        )
+        v_w = self._robot.data.root_lin_vel_w[:, :2]
+        cmd_w_norm = torch.norm(cmd_w, dim=1)
+        dir_w = cmd_w / cmd_w_norm.unsqueeze(1).clamp(min=1e-6)
+        proj = (v_w * dir_w).sum(dim=1)
+        # curriculum: forward progress only, no credit for overshooting
+        proj_pos = torch.minimum(proj.clamp(min=0.0), cmd_w_norm)
+        self._cmd_path += cmd_w_norm * self.step_dt
+        self._prog_path += proj_pos * self.step_dt
+
+        # reward in [-1, 1]; moving away from the target direction is penalized
+        proj_clipped = torch.maximum(torch.minimum(proj, cmd_w_norm), -cmd_w_norm)
+        progress = proj_clipped / cmd_w_norm.clamp(min=1e-6)
+        progress = progress * (cmd_w_norm > 0.1).float()
+        
+        # lin vel error
+        lin_vel_error = torch.sum((cmd_w - v_w)**2, dim=1)
+        lin_vel_error_mapped = torch.exp(-lin_vel_error / 0.25)
+        
         # yaw rate tracking
         yaw_rate_error = torch.square(self.command_manager.get_command("base_velocity")[:, 2] - self._robot.data.root_ang_vel_b[:, 2])
         yaw_rate_error_mapped = torch.exp(-yaw_rate_error / 0.25)
+        
         # track_height
         height_data_scanner = self._height_scanner.data.ray_hits_w[..., 2]
         height_data_scanner = torch.nan_to_num(height_data_scanner, nan=0.0, posinf=1.0, neginf=-1.0)
@@ -443,18 +470,25 @@ class Go2LidarEnv(DirectRLEnv):
         
         # z velocity tracking
         z_vel_error = torch.square(self._robot.data.root_lin_vel_b[:, 2])
+        
         # angular velocity x/y
         ang_vel_error = torch.sum(torch.square(self._robot.data.root_ang_vel_b[:, :2]), dim=1)
+        
         # joint torques
         joint_torques = torch.sum(torch.square(self._robot.data.applied_torque), dim=1)
+        
         # joint acceleration
         joint_accel = torch.sum(torch.square(self._robot.data.joint_acc), dim=1)
+        
         # joint energy
         joint_energy = torch.sum(torch.abs(self._robot.data.applied_torque * self._robot.data.joint_vel), dim=1)
+        
         # action rate
         action_rate = torch.sum(torch.square(self._actions - self._previous_actions), dim=1)
+        
         # action rate, order 2:
-        action_rate_2 = torch.sum(torch.square(self._actions - 2*self._previous_actions + self._previous_previous_actions), dim=1)        
+        action_rate_2 = torch.sum(torch.square(self._actions - 2*self._previous_actions + self._previous_previous_actions), dim=1) 
+               
         # feet air time
         first_contact = self._contact_sensor.compute_first_contact(self.step_dt)[:, self._feet_ids_sensor]
         last_air_time = self._contact_sensor.data.last_air_time[:, self._feet_ids_sensor]
@@ -581,6 +615,8 @@ class Go2LidarEnv(DirectRLEnv):
             "feet_to_hip" : feet_to_hip_distance * self.cfg.feet_to_hip_reward_scale * self.step_dt,
             "feet_grounded_stop": feet_ground_stop * self.cfg.feet_grounded_scale * self.step_dt,
             "feet_vertical_surface" : feet_vertical_surface_contacts * self.cfg.feet_vertical_surface_contacts_reward_scale * self.step_dt,
+            "heading_error": heading_rew * self.cfg.heading_rew_reward_scale * self.step_dt,
+            "progress": progress * self.cfg.progress_reward_scale * self.step_dt,
             # "termination": termination * self.cfg.termination_reward_scale,
         }
         reward = torch.sum(torch.stack(list(rewards.values())), dim=0)
