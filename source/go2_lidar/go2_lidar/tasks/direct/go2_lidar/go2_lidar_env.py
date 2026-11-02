@@ -82,10 +82,13 @@ class Go2LidarEnv(DirectRLEnv):
                 "action_rate_l2",
                 "action_rate_2_l2",
                 "feet_air_time",
+                "feet_long_air",
+                "feet_air_stand",
                 "feet_gait",
                 # "feet_dist",
                 "undesired_contacts",
                 "flat_orientation_l2",
+                "pitch_orientation_l1",
                 "def_pos",
                 "feet_to_hip",
                 "feet_grounded_stop",
@@ -364,10 +367,13 @@ class Go2LidarEnv(DirectRLEnv):
         # should_move = torch.linalg.norm(self.command_manager.get_command("base_velocity"), dim=1) > 0.01
         # clock_data[:, :] = clock_data[:, :]*should_move.unsqueeze(1).expand(-1, 4) + -1.0* ~should_move.unsqueeze(1).expand(-1, 4)
         # 3+3+3+12+12+12 = 45
+        
+        cmd = torch.zeros_like(self.command_manager.get_command("base_velocity"), device=self.device)
         actor_proprio = torch.cat([
             self._robot.data.root_ang_vel_b + noise(self._robot.data.root_ang_vel_b, 0.1),
             self._robot.data.projected_gravity_b + noise(self._robot.data.projected_gravity_b, 0.05),
-            self.command_manager.get_command("base_velocity"),
+            cmd,
+            # self.command_manager.get_command("base_velocity"),
             self._robot.data.joint_pos - self._robot.data.default_joint_pos + noise(self._robot.data.joint_pos, 0.01),
             self._robot.data.joint_vel + noise(self._robot.data.joint_vel, 0.1),
             self._actions,
@@ -428,8 +434,8 @@ class Go2LidarEnv(DirectRLEnv):
         
         #heading error (prevent robot from turning around in stairs climbing)
         heading_err = torch.abs(math_utils.wrap_to_pi(term.heading_target - self._robot.data.heading_w))
-        heading_rew = torch.exp(-torch.square(heading_err) / 0.25) * term.is_heading_env.float()
-        
+        cmd_full = torch.linalg.norm(cmd, dim=1) 
+        heading_rew = torch.exp(-torch.square(heading_err) / 0.25) * term.is_heading_env.float() * (cmd_full > 0.01).float()
         # utils for the curriculum
         ref_yaw = torch.where(term.is_heading_env, term.heading_target, self._robot.data.heading_w)
         c, s = torch.cos(ref_yaw), torch.sin(ref_yaw)
@@ -492,10 +498,14 @@ class Go2LidarEnv(DirectRLEnv):
         # feet air time
         first_contact = self._contact_sensor.compute_first_contact(self.step_dt)[:, self._feet_ids_sensor]
         last_air_time = self._contact_sensor.data.last_air_time[:, self._feet_ids_sensor]
-        air_time = torch.sum(torch.clamp(last_air_time - 0.5, min=0.0) * first_contact, dim=1) * (
-            torch.norm(self.command_manager.get_command("base_velocity")[:, :2], dim=1) > 0.1
-        )
-        
+        air_time = torch.sum(
+            (last_air_time.clamp(max=0.4) - 0.2).clamp(min=0.0) * first_contact, dim=1
+        ) * (torch.norm(cmd_xy, dim=1) > 0.1)
+
+        # penalty for a foot that stays airborne too long
+        current_air = self._contact_sensor.data.current_air_time[:, self._feet_ids_sensor]
+        long_air = (current_air - 0.5).clamp(min=0.0).sum(dim=1)
+                
         # useful for next two rewards:
         cmd = torch.linalg.norm(self.command_manager.get_command("base_velocity"), dim=1)
         should_move = cmd > 0.01
@@ -532,7 +542,8 @@ class Go2LidarEnv(DirectRLEnv):
             ((~foot_contact[:, 1]) & (~foot_contact[:, 3]))    # FR+RR = pace right
         ).float()
         # --- only reward when actually moving ---
-        gait = (trot_pattern - 0.5 * wrong_pair ).clamp(min=0.0) * should_move
+        moving_xy = torch.norm(cmd_xy, dim=1) > 0.1
+        gait = (trot_pattern - 0.5 * wrong_pair).clamp(min=0.0) * moving_xy
         
         # all feet grounded when stopped
         all_feet_grounded = (
@@ -543,7 +554,9 @@ class Go2LidarEnv(DirectRLEnv):
         ).float()  # [N]
 
         # only reward when the robot should NOT be moving
-        feet_ground_stop = all_feet_grounded * (~should_move).float() * terrain_mask      
+        feet_ground_stop = all_feet_grounded * (~should_move).float() * terrain_mask  
+        stand = ~(cmd > 0.01)
+        feet_air_stand = (~foot_contact).float().sum(dim=1) * stand.float()    
 
         # feet dist
         # f_dist_squarred = torch.sum(torch.square(self._robot.data.body_pos_w[:,self._feet_ids[0],:2]-self._robot.data.body_pos_w[:,self._feet_ids[1],:2]), dim = 1)
@@ -551,9 +564,14 @@ class Go2LidarEnv(DirectRLEnv):
         # feet_dist_error = torch.min((f_dist_squarred - self.cfg.feet_dist_threshold**2) + (r_dist_squarred - self.cfg.feet_dist_threshold**2), torch.zeros(self.num_envs,device=self.device))
         
         # flat 
-        flat_orientation = torch.sum(torch.square(self._robot.data.projected_gravity_b[:, :2]), dim=1) 
-        flat_orientation_terrain = terrain_mask * flat_orientation
-    
+        flat_l2 = torch.sum(torch.square(self._robot.data.projected_gravity_b[:, :2]), dim=1) 
+        flat_terrain_l2 = terrain_mask * flat_l2
+        
+        # pitch l1
+        pitch_l1 = self._robot.data.projected_gravity_b[:, 0]
+        dead_zone = 0.05
+        pitch_terrain_l1 = (pitch_l1.abs() - dead_zone).clamp(min=0.0) * terrain_mask
+        
         # undesired contacts
         is_contact = (
             torch.max(torch.norm(self._contact_sensor.data.net_forces_w_history[:, :, self._undesired_contact_body_ids_sensor], dim=-1), dim=1)[0] > 1.0
@@ -607,10 +625,13 @@ class Go2LidarEnv(DirectRLEnv):
             "action_rate_l2": action_rate * self.cfg.action_rate_reward_scale * self.step_dt,
             "action_rate_2_l2": action_rate_2 * self.cfg.action_rate_2_reward_scale * self.step_dt,
             "feet_air_time": air_time * self.cfg.feet_air_time_reward_scale * self.step_dt,
+            "feet_long_air": long_air * self.cfg.feet_long_air_reward_scale * self.step_dt,
             "feet_gait": gait * self.cfg.gait_reward_scale * self.step_dt,
+            "feet_air_stand": feet_air_stand * self.cfg.feet_air_stand_reward_scale * self.step_dt,
             # "feet_dist": feet_dist_error * self.cfg.feet_dist_reward_scale * self.step_dt,
             "undesired_contacts": contacts * self.cfg.undesired_contact_reward_scale * self.step_dt,
-            "flat_orientation_l2": flat_orientation_terrain * self.cfg.flat_orientation_reward_scale * self.step_dt,
+            "flat_orientation_l2": flat_terrain_l2 * self.cfg.flat_orientation_reward_scale * self.step_dt,
+            "pitch_orientation_l1": pitch_terrain_l1 * self.cfg.pitch_orientation_reward_scale * self.step_dt,
             "def_pos" : def_pos * self.cfg.def_pos_reward_scale * self.step_dt,
             "feet_to_hip" : feet_to_hip_distance * self.cfg.feet_to_hip_reward_scale * self.step_dt,
             "feet_grounded_stop": feet_ground_stop * self.cfg.feet_grounded_scale * self.step_dt,
@@ -619,6 +640,9 @@ class Go2LidarEnv(DirectRLEnv):
             "progress": progress * self.cfg.progress_reward_scale * self.step_dt,
             # "termination": termination * self.cfg.termination_reward_scale,
         }
+        standing = cmd < 0.01
+        self.extras["log"]["Debug/heading_err_standing"] = heading_err[standing].mean()
+        self.extras["log"]["Debug/gait_rew_standing"] = gait[standing].mean()
         reward = torch.sum(torch.stack(list(rewards.values())), dim=0)
         reward = self._sanitize_tensor(reward, "reward", clamp_abs=100.0)
         # Logging

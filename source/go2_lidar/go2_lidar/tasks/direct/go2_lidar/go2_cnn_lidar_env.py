@@ -81,10 +81,13 @@ class Go2LidarCNNEnv(Go2LidarEnv):
             actor_proprio = self._buffer.compute(actor_proprio_delayed)
             actor_grid = self._grid_buffer.compute(actor_grid)
             
+        # cmd = torch.zeros_like(self.command_manager.get_command("base_velocity"), device=self.device)
+            
         actor_proprio = torch.cat(
             [
                 actor_proprio_delayed,
                 self.command_manager.get_command("base_velocity"),
+                # cmd,
                 self._actions,
             ],
             dim=-1
