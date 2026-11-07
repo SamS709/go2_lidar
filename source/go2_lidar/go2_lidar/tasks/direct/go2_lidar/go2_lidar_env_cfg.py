@@ -549,7 +549,7 @@ class Go2LidarFlatEnvCfg(DirectRLEnvCfg):
     lin_vel_reward_scale = 2.0
     heading_rew_reward_scale = 0.50
     height_reward_scale = 1.0
-    progress_reward_scale = 1.5 
+    progress_reward_scale = 1.5
     yaw_rate_reward_scale = 0.5
     z_vel_reward_scale = -1.0
     ang_vel_reward_scale = -0.15
