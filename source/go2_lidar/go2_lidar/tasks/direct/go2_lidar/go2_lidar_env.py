@@ -17,7 +17,12 @@ from isaaclab.utils.buffers import DelayBuffer
 from isaaclab.markers import VisualizationMarkers
 from isaaclab.sensors import ContactSensor, RayCaster
 from isaaclab.managers import CommandManager, CurriculumManager
-from isaaclab.utils.math import quat_conjugate, quat_apply, quat_mul, quat_inv, quat_rotate_inverse
+
+# Shared with the navigation env and the robot (single implementation of the sensor / observation logic)
+from .go2_perception import HeightGrid
+from .go2_perception.height_grid import rays_in_lidar_frame
+from .go2_perception.locomotion import build_loc_obs, build_proprio
+from .go2_perception.sim_noise import CellDropout, LidarMisalignment, height_image, sample_lag, set_buffer_lag
 
 from .go2_lidar_env_cfg import Go2LidarFlatEnvCfg, Go2LidarRoughEnvCfg
 
@@ -56,17 +61,14 @@ class Go2LidarEnv(DirectRLEnv):
         self._prog_path = torch.zeros(self.num_envs, device=self.device)
         
         self._desired_hip_offset = torch.tensor([-self.cfg.desired_hip_offset, self.cfg.desired_hip_offset, -self.cfg.desired_hip_offset, self.cfg.desired_hip_offset], device=self.device)
-        if self.cfg.delay == True:
-            self._buffer = DelayBuffer(history_length=self.cfg.history_length, batch_size=self.num_envs, device=self.device)
-            if self.cfg.history_length > 0:
-                self._buffer.set_time_lag(
-                    torch.randint(low=0, high=self.cfg.history_length, size=(self.num_envs,), device=self.device)
-                )
-            self._grid_buffer = DelayBuffer(history_length=self.cfg.history_length, batch_size=self.num_envs, device=self.device)
-            if self.cfg.history_length > 0:
-                self._grid_buffer.set_time_lag(
-                    torch.randint(low=0, high=self.cfg.history_length, size=(self.num_envs,), device=self.device)
-                )
+        if self.cfg.delay:
+            # Same convention as the navigation env: cfg.delay_length, lags uniform in [0, delay_length] control steps,
+            # independent lag for proprio and for the height grid (separate sensors).
+            L = int(self.cfg.delay_length)
+            self._buffer = DelayBuffer(history_length=L, batch_size=self.num_envs, device=self.device)
+            self._grid_buffer = DelayBuffer(history_length=L, batch_size=self.num_envs, device=self.device)
+            set_buffer_lag(self._buffer, sample_lag(self.num_envs, L, self.device))
+            set_buffer_lag(self._grid_buffer, sample_lag(self.num_envs, L, self.device))
         # Logging
         self._episode_sums = {
             key: torch.zeros(self.num_envs, dtype=torch.float, device=self.device)
@@ -154,47 +156,6 @@ class Go2LidarEnv(DirectRLEnv):
             tensor = torch.clamp(tensor, min=-clamp_abs, max=clamp_abs)
         return tensor
 
-    def _create_gaussian_heightmap(self, h, w):
-        y = torch.arange(h, device=self.device, dtype=torch.float32)
-        x = torch.arange(w, device=self.device, dtype=torch.float32)
-        yy, xx = torch.meshgrid(y, x, indexing='ij')
-        
-        # Center of the grid
-        cy = (h - 1) / 2.0
-        cx = (w - 1) / 2.0
-        
-        # Compute 2D Gaussian
-        gaussian_dist = torch.exp(((xx - cx)**2 + (yy - cy)**2) / (2 * self.cfg.sigma**2))
-        
-        # Normalize to create probability distribution
-        gaussian_prob = gaussian_dist / gaussian_dist.sum()
-        self.gaussian_prob_heightmap  = gaussian_prob.flatten()
-        self.sampled_indices = torch.multinomial(self.gaussian_prob_heightmap, self.cfg.n_zeros, replacement=True)
-        self.same_zeros_count = 0
-        self.reset_zeros_freq = int(torch.randint(1, self.cfg.max_reset_zeros_freq + 1, (1,), device=self.device).item())        
-    
-    def _apply_yaw_rotation(self, points: torch.Tensor) -> torch.Tensor:
-        angles = torch.deg2rad(self._rots_yaw).unsqueeze(-1)
-        cos_angles = torch.cos(angles)
-        sin_angles = torch.sin(angles)
-        x_coord = points[..., 0]
-        y_coord = points[..., 1]
-        z_coord = points[..., 2]
-        rotated_x = x_coord * cos_angles + z_coord * sin_angles
-        rotated_z = -x_coord * sin_angles + z_coord * cos_angles
-        return torch.stack((rotated_x, y_coord, rotated_z), dim=-1)
-    
-    def _apply_roll_rotation(self, points: torch.Tensor) -> torch.Tensor:
-        angles = torch.deg2rad(self._rots_roll).unsqueeze(-1)
-        cos_angles = torch.cos(angles)
-        sin_angles = torch.sin(angles)
-        x_coord = points[..., 0]
-        y_coord = points[..., 1]
-        z_coord = points[..., 2]
-        rotated_y = y_coord * cos_angles - z_coord * sin_angles
-        rotated_z = y_coord * sin_angles + z_coord * cos_angles
-        return torch.stack((x_coord, rotated_y, rotated_z), dim=-1)
-
     def _setup_scene(self):
         if self.cfg.vis:
             self.env_markers = VisualizationMarkers(self.cfg.env_marker_cfg)
@@ -211,15 +172,16 @@ class Go2LidarEnv(DirectRLEnv):
             # self._height_scanner_critic = RayCaster(self.cfg.height_scanner_critic)
             self.scene.sensors["height_scanner"] = self._height_scanner
             # self.scene.sensors["height_scanner_critic"] = self._height_scanner_critic
-            x_cells = max(1, int((self.cfg.x_range[1] - self.cfg.x_range[0]) / self.cfg.res))
-            y_cells = max(1, int((self.cfg.y_range[1] - self.cfg.y_range[0]) / self.cfg.res))
-            self._create_gaussian_heightmap(x_cells, y_cells)
-            self._rots_yaw = torch.empty(self.num_envs, device=self.device)
-            self._rots_roll = torch.empty(self.num_envs, device=self.device)
-            self._offsets = torch.empty(self.num_envs, device=self.device)
-            self._rots_yaw.uniform_(-self.cfg.max_rot, self.cfg.max_rot)
-            self._rots_roll.uniform_(-self.cfg.max_rot, self.cfg.max_rot)
-            self._offsets.uniform_(-self.cfg.max_offset, self.cfg.max_offset)
+
+            # height grid (same class as the navigation env / robot) and sim-only cell dropout
+            self.height_grid = HeightGrid(
+                self.cfg.x_range, self.cfg.y_range, self.cfg.res, self.cfg.desired_base_height, self.device
+            )
+            self.dropout = CellDropout(
+                self.height_grid, None, self.cfg.sigma, self.cfg.n_zeros, self.cfg.max_reset_zeros_freq, self.device
+            )
+            # lidar mounting error (rotations + 3D ray offset), identical to the navigation env
+            self.lidar_noise = LidarMisalignment(self.num_envs, self.cfg.max_rot, self.cfg.max_offset, self.device)
             # self._rots = torch.tensor()
             
 
@@ -256,90 +218,12 @@ class Go2LidarEnv(DirectRLEnv):
         self._robot.set_joint_position_target(self._processed_actions)
         # self._robot.set_joint_position_target(self._robot.data.default_joint_pos)    
 
-
-    def _compute_height_data_from_cloud(self, randomize: bool = False, apply_dropout: bool = True):
-        """Compute flattened heightmap in lidar frame using cfg x/y bounds and cell size."""
+    # ------------------------------------------------------------------ height sensor
+    def _lidar_rays(self) -> torch.Tensor:
+        """Clean ray hits in the lidar frame (policy convention). Computed once per step."""
         data = self._height_scanner.data
-        ray_hits_w = data.ray_hits_w
-        lidar_pos_w = data.pos_w
-        lidar_quat_w = data.quat_w
-        num_envs, num_rays, _ = ray_hits_w.shape
-        rays_rel_w = - ray_hits_w + lidar_pos_w.unsqueeze(1)
-        rays_lidar = quat_apply(
-            quat_conjugate(lidar_quat_w).unsqueeze(1).expand(num_envs, num_rays, 4).reshape(-1, 4),
-            rays_rel_w.reshape(-1, 3),
-        ).reshape(num_envs, num_rays, 3)
-        # rays_lidar = rays_rel_w
-        if randomize and hasattr(self, "_rots_yaw"):
-            rays_lidar = self._apply_yaw_rotation(rays_lidar)
-            rays_lidar = self._apply_roll_rotation(rays_lidar)
+        return rays_in_lidar_frame(data.ray_hits_w, data.pos_w, data.quat_w)
 
-        cell_size_m = float(self.cfg.res)
-        inv_cell_size = 1.0 / cell_size_m
-        x_min, x_max = float(self.cfg.x_range[0]), float(self.cfg.x_range[1])
-        y_min, y_max = float(self.cfg.y_range[0]), float(self.cfg.y_range[1])
-        x_cells = max(1, int((x_max - x_min) / cell_size_m))
-        y_cells = max(1, int((y_max - y_min) / cell_size_m))
-        num_cells = x_cells * y_cells
-
-        rays_flat = rays_lidar.reshape(-1, 3)
-        env_ids = torch.arange(num_envs, device=self.device).unsqueeze(1).expand(num_envs, num_rays).reshape(-1)
-
-        valid = torch.isfinite(rays_flat).all(dim=1)
-        if not torch.any(valid):
-            return torch.zeros((num_envs, num_cells), device=self.device), torch.zeros((num_envs, num_cells), device=self.device)
-
-        rays_valid = rays_flat[valid]
-        env_ids = env_ids[valid]
-
-        x_idx = torch.floor((rays_valid[:, 0] - x_min) * inv_cell_size).long()
-        y_idx = torch.floor((rays_valid[:, 1] - y_min) * inv_cell_size).long()
-        in_bounds = (x_idx >= 0) & (x_idx < x_cells) & (y_idx >= 0) & (y_idx < y_cells)
-        if not torch.any(in_bounds):
-            return torch.zeros((num_envs, num_cells), device=self.device), torch.zeros((num_envs, num_cells), device=self.device)
-
-        x_idx = x_idx[in_bounds]
-        y_idx = y_idx[in_bounds]
-        env_ids = env_ids[in_bounds]
-        z_vals = rays_valid[in_bounds, 2]
-
-        # Flatten env and cell indexing into one reduce op.
-        flat_idx = env_ids * num_cells + x_idx * y_cells + y_idx
-        height_map = torch.full((num_envs * num_cells,), -torch.inf, device=self.device)
-        height_map.scatter_reduce_(0, flat_idx, z_vals, reduce="amax", include_self=True)
-        height_map = height_map.reshape(num_envs, num_cells) + self.cfg.desired_base_height
-        hit_mask = torch.isfinite(height_map)                       # capture BEFORE the where() destroys it
-        height_map = torch.where(hit_mask, -height_map, torch.zeros_like(height_map))
-        if randomize:
-            height_map = self._apply_offset(height_map)
-            height_map += (2.0 * torch.rand_like(height_map) - 1.0) * float(0.01)
-        if apply_dropout:
-            height_map, dropout_mask = self._zero_heightmap_cells(height_map)
-            valid = hit_mask & dropout_mask
-        else:
-            valid = hit_mask
-        return height_map, valid
-    
-
-    def _apply_offset(self, height_map):
-        if not hasattr(self, "_offsets"):
-            return height_map
-        offset_shape = (self._offsets.shape[0],) + (1,) * (height_map.ndim - 1)
-        return height_map + self._offsets.view(offset_shape)
-    
-    def _zero_heightmap_cells(self, height_map):
-        self.same_zeros_count += 1
-        if self.same_zeros_count == self.reset_zeros_freq:
-            self.reset_zeros_freq = int(torch.randint(1, self.cfg.max_reset_zeros_freq + 1, (1,), device=self.device).item())
-            self.same_zeros_count = 0
-            self.sampled_indices = torch.multinomial(self.gaussian_prob_heightmap, self.cfg.n_zeros, replacement=True)
-        height_map_actor = height_map.clone()
-        valid = torch.ones_like(height_map, dtype=torch.bool)
-        height_map_actor[:, self.sampled_indices] = 0.0
-        valid[:, self.sampled_indices] = False
-        return height_map_actor, valid
-
-    
     def is_on_terrain(self, terrain_names: list[str]) -> torch.Tensor:
         mask = torch.zeros(self.num_envs, dtype=torch.bool, device=self.device)
         for name in terrain_names:
@@ -348,71 +232,80 @@ class Go2LidarEnv(DirectRLEnv):
     
     def _get_observations(self) -> dict:
         
-        height_data = self._compute_height_data_from_cloud(randomize=False)
-        height_data_actor = self._compute_height_data_from_cloud(randomize=self.cfg.randomize)
+        # Unified observation construction for all env variants.
+        # Sensor model identical to the navigation env: misaligned rays -> grid (+z noise) -> sanitize -> delay.
+        randomize = bool(self.cfg.randomize)
+        rays_clean = self._lidar_rays()
+        rays_actor = self.lidar_noise.apply(rays_clean) if (randomize and hasattr(self, "lidar_noise")) else rays_clean
+
+        # critic: clean, privileged
+        height_data, valid_critic = height_image(
+            self.height_grid, rays_clean, self.dropout, noise=0.0, apply_dropout=False
+        )
+        # actor: noisy; cell dropout only when randomizing (as in the navigation env)
+        height_data_actor, valid_actor = height_image(
+            self.height_grid, rays_actor, self.dropout, noise=0.01 if randomize else 0.0, apply_dropout=randomize
+        )
+
         height_data = self._sanitize_tensor(height_data, "height_data", clamp_abs=10.0)
         height_data_actor = self._sanitize_tensor(height_data_actor, "height_data_actor", clamp_abs=10.0)
+        valid_critic = valid_critic.float()
+        valid_actor = valid_actor.float()
+        if self.cfg.vis:
+            torch.set_printoptions(precision=2, linewidth=1000, sci_mode=False)
+            print(height_data[self.vis_envs] + self.cfg.desired_base_height)
+            print(height_data[self.vis_envs].mean())
+        actor_grid = torch.stack([height_data_actor, valid_actor], dim=1)     # (N, 2, x_cells, y_cells)
+        critic_grid = torch.stack([height_data, valid_critic], dim=1)
 
-        noise = lambda t, s: (2.0 * torch.rand_like(t) - 1.0) * s * self.cfg.randomize
-        
-        # x_cells = max(1, int((float(self.cfg.x_range[1]) - float(self.cfg.x_range[0])) / float(self.cfg.res)))
-        # y_cells = max(1, int((float(self.cfg.y_range[1]) - float(self.cfg.y_range[0])) / float(self.cfg.res)))
-        # height_data_print = height_data.view(self.num_envs, x_cells, y_cells).flip(dims=[1]).unsqueeze(1)
-        # torch.set_printoptions(precision=2, linewidth=1000, sci_mode=False)
-        # print(height_data_print[0] + self.cfg.desired_base_height)
-        
-        # clock_data = torch.vstack([self._phase_signal[:,0], self._phase_signal[:,1], self._phase_signal[:,2], self._phase_signal[:,3]]).T
-        # # all the envs that are not moving, we put -1
-        # print(clock_data)
-        # should_move = torch.linalg.norm(self.command_manager.get_command("base_velocity"), dim=1) > 0.01
-        # clock_data[:, :] = clock_data[:, :]*should_move.unsqueeze(1).expand(-1, 4) + -1.0* ~should_move.unsqueeze(1).expand(-1, 4)
-        # 3+3+3+12+12+12 = 45
-        
-        cmd = torch.zeros_like(self.command_manager.get_command("base_velocity"), device=self.device)
-        actor_proprio = torch.cat([
-            self._robot.data.root_ang_vel_b + noise(self._robot.data.root_ang_vel_b, 0.1),
-            self._robot.data.projected_gravity_b + noise(self._robot.data.projected_gravity_b, 0.05),
-            cmd,
-            # self.command_manager.get_command("base_velocity"),
-            self._robot.data.joint_pos - self._robot.data.default_joint_pos + noise(self._robot.data.joint_pos, 0.01),
-            self._robot.data.joint_vel + noise(self._robot.data.joint_vel, 0.1),
-            self._actions,
-            # clock_data,
-        ], dim=-1)
-        actor_proprio = self._sanitize_tensor(actor_proprio, "actor_proprio", clamp_abs=100.0)
-
-        actor_grid = self._sanitize_tensor(height_data_actor, "actor_grid", clamp_abs=10.0)
-
-        
-        critic_proprio = torch.cat([
-            self._robot.data.root_lin_vel_b,
+        actor_proprio_noisy = build_proprio(
             self._robot.data.root_ang_vel_b,
             self._robot.data.projected_gravity_b,
-            self.command_manager.get_command("base_velocity"),
             self._robot.data.joint_pos - self._robot.data.default_joint_pos,
             self._robot.data.joint_vel,
-            # clock_data,
-            self._actions,
-        ], dim=-1)
-        
-        if self.cfg.filter_actions:
-            actor_proprio = torch.cat([actor_proprio, self._previous_actions], dim=-1)
-            critic_proprio = torch.cat([critic_proprio, self._previous_actions], dim=-1)
-        
-        critic_proprio = self._sanitize_tensor(critic_proprio, "critic_proprio", clamp_abs=100.0)
+            noise_scale=float(randomize),
+        )
+        actor_proprio_noisy = self._sanitize_tensor(actor_proprio_noisy, "actor_proprio", clamp_abs=50.0)
 
-        critic_grid = self._sanitize_tensor(height_data, "critic_grid", clamp_abs=10.0)
-        
-        if self.cfg.delay == True:
-            actor_proprio = self._buffer.compute(actor_proprio)
+        # sensor latency: proprio and height grid each go through their own delay buffer
+        actor_proprio_delayed = actor_proprio_noisy
+        if self.cfg.delay:
+            actor_proprio_delayed = self._buffer.compute(actor_proprio_noisy)
             actor_grid = self._grid_buffer.compute(actor_grid)
-       
 
+        # command and last action are not delayed (same as the navigation env)
+        actor_proprio = build_loc_obs(
+            actor_proprio_delayed,
+            self.command_manager.get_command("base_velocity"),
+            self._actions,
+        )
+        # Critic (privileged) proprio observations — include privileged sensors like base linear velocity,
+        # contact flags and other privileged terms useful for value estimation.
+        
+        critic_proprio = torch.cat(
+            [
+                self._robot.data.root_lin_vel_b,
+                self._robot.data.root_ang_vel_b,
+                self._robot.data.projected_gravity_b,
+                self.command_manager.get_command("base_velocity"),
+                self._robot.data.joint_pos - self._robot.data.default_joint_pos,
+                self._robot.data.joint_vel,
+                self._actions,
+                # clock_data
+            ],
+            dim=-1,
+        )
+        critic_proprio = self._sanitize_tensor(critic_proprio, "critic_proprio", clamp_abs=100.0)
+        # self._update_proprio_buffers(actor_proprio, critic_proprio)
+        
+        # Update previous actions and return unified observation dict (flat keys for runner grouping).
+        self._previous_actions = self._actions.clone()
+        
         return {
             "actor_proprio": actor_proprio,
-            "actor_grid":    actor_grid,
+            "actor_grid": actor_grid,
             "critic_proprio": critic_proprio,
-            "critic_grid":   critic_grid,
+            "critic_grid": critic_grid,
         }
 
     def _get_rewards(self) -> torch.Tensor:
@@ -685,35 +578,17 @@ class Go2LidarEnv(DirectRLEnv):
         lower = torch.empty(len(reset_env_ids), device=self.device).uniform_(min_sample_range, upper)  # one lower bound per env
         # time_left_i ~ U(lower_i, upper)
         term.time_left[env_ids] = lower + (upper - lower) * torch.rand(len(reset_env_ids), device=self.device)
-        if hasattr(self, "_rots_yaw"):
-            num_resets = reset_env_ids.numel()
-            self._rots_yaw[reset_env_ids] = torch.empty(num_resets, device=self.device).uniform_(-self.cfg.max_rot, self.cfg.max_rot)
-            self._rots_roll[reset_env_ids] = torch.empty(num_resets, device=self.device).uniform_(-self.cfg.max_rot, self.cfg.max_rot)    
-            self._offsets[reset_env_ids] = torch.empty(num_resets, device=self.device).uniform_(
-                -self.cfg.max_offset, self.cfg.max_offset
-            )
-            
-        if self.cfg.delay:
-            lag = torch.randint(
-                0,
-                self.cfg.history_length + 1,
-                (len(reset_env_ids),),
-                device=self.device,
-                dtype=torch.int32,
-            )
-            self._buffer.reset(reset_env_ids)
-            self._buffer.set_time_lag(lag, batch_ids=reset_env_ids)
+        if hasattr(self, "lidar_noise"):
+            self.lidar_noise.resample(reset_env_ids)
 
-            lag_grid = torch.randint(
-                0,
-                self.cfg.history_length + 1,
-                (len(reset_env_ids),),
-                device=self.device,
-                dtype=torch.int32,
-            )
+        if self.cfg.delay:
+            L = int(self.cfg.delay_length)
+            n = reset_env_ids.numel()
+            self._buffer.reset(reset_env_ids)
+            set_buffer_lag(self._buffer, sample_lag(n, L, self.device), batch_ids=reset_env_ids)
             self._grid_buffer.reset(reset_env_ids)
-            self._grid_buffer.set_time_lag(lag_grid, batch_ids=reset_env_ids)
-                    
+            set_buffer_lag(self._grid_buffer, sample_lag(n, L, self.device), batch_ids=reset_env_ids)
+
         # reset phase
         # self._phase_signal[env_ids] = self._phase_offset[env_ids].clone()
         # self._phase_signal[env_ids] = self._phase_signal[env_ids]  % 1.0
@@ -722,26 +597,6 @@ class Go2LidarEnv(DirectRLEnv):
         # self.proprio_buffer_actor[reset_env_ids] = 0.0
         # self.proprio_buffer_critic[reset_env_ids] = 0.0
         
-    #    # Reset robot state
-    #     joint_pos = self._robot.data.default_joint_pos[reset_env_ids]
-    #     joint_vel = self._robot.data.default_joint_vel[reset_env_ids]
-    #     default_root_state = self._robot.data.default_root_state[reset_env_ids]
-    #     default_root_state[:, :3] += self.scene.terrain.env_origins[reset_env_ids]
-    #     # Add x-axis offset to spawn position
-    #     # default_root_state[:, 0]-= 4.2  # Offset in meters (change this value as needed)
-    #     # default_root_state[:, 1] -= 3.5  # Offset in meters (change this value as needed)
-    #     # # Rotate 45 degrees around z-axis at spawn
-    #     # import math
-    #     # angle = math.pi / 4  # 45 degrees
-    #     # z_rot_quat = torch.tensor(
-    #     #     [math.cos(angle / 2), 0.0, 0.0, math.sin(angle / 2)],
-    #     #     dtype=default_root_state.dtype, device=self.device
-    #     # ).expand(len(env_ids), -1)
-    #     # default_root_state[:, 3:7] = quat_mul(z_rot_quat, default_root_state[:, 3:7])
-
-    #     self._robot.write_root_pose_to_sim(default_root_state[:, :7], reset_env_ids)
-    #     self._robot.write_root_velocity_to_sim(default_root_state[:, 7:], reset_env_ids)
-    #     self._robot.write_joint_state_to_sim(joint_pos, joint_vel, None, reset_env_ids)
         # Logging
         extras = dict()
         for key in self._episode_sums.keys():

@@ -530,7 +530,7 @@ class Go2LidarFlatEnvCfg(DirectRLEnvCfg):
     randomize = True
     
     delay: bool = True
-    history_length = 2
+    delay_length = 2
         
     clamp_actions = False
     desired_clip_actions = 3.0
