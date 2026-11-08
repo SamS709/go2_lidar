@@ -21,7 +21,7 @@ from isaaclab.managers import CommandManager, CurriculumManager
 # Shared with the navigation env and the robot (single implementation of the sensor / observation logic)
 from .go2_perception import HeightGrid
 from .go2_perception.height_grid import rays_in_lidar_frame
-from .go2_perception.locomotion import build_loc_obs, build_proprio
+from .go2_perception.locomotion import ProprioHistory, build_loc_obs, build_proprio, loc_frame_dim
 from .go2_perception.sim_noise import (
     CellDropout, LidarBlackout, LidarMisalignment, height_image, sample_lag, set_buffer_lag
 )
@@ -47,12 +47,11 @@ class Go2LidarEnv(DirectRLEnv):
         self._previous_previous_actions = torch.zeros(
             self.num_envs, gym.spaces.flatdim(self.single_action_space), device=self.device
         )
-        # self.proprio_buffer_actor = torch.zeros(
-        #     self.num_envs, int(self.cfg.proprio_buffer_length), 45, device=self.device
-        # )
-        # self.proprio_buffer_critic = torch.zeros(
-        #     self.num_envs, int(self.cfg.proprio_buffer_length), 48, device=self.device
-        # )
+        # Actor proprio history [frame(t-H), ..., frame(t)], H = cfg.proprio_hist_length (same class as nav / robot).
+        # The critic keeps a single privileged frame.
+        self.proprio_hist = ProprioHistory(
+            self.num_envs, loc_frame_dim(self._actions.shape[1]), int(self.cfg.proprio_hist_length), self.device
+        )
 
         # X/Y linear velocity and yaw angular velocity commands
         self.command_manager = CommandManager(self.cfg.commands, self)
@@ -291,11 +290,12 @@ class Go2LidarEnv(DirectRLEnv):
             actor_grid = self._grid_buffer.compute(actor_grid)
 
         # command and last action are not delayed (same as the navigation env)
-        actor_proprio = build_loc_obs(
+        actor_frame = build_loc_obs(
             actor_proprio_delayed,
             self.command_manager.get_command("base_velocity"),
             self._actions,
         )
+        actor_proprio = self.proprio_hist.push(actor_frame)  # [N, (H+1) * 45]
         # Critic (privileged) proprio observations — include privileged sensors like base linear velocity,
         # contact flags and other privileged terms useful for value estimation.
         
@@ -313,7 +313,6 @@ class Go2LidarEnv(DirectRLEnv):
             dim=-1,
         )
         critic_proprio = self._sanitize_tensor(critic_proprio, "critic_proprio", clamp_abs=100.0)
-        # self._update_proprio_buffers(actor_proprio, critic_proprio)
         
         # Update previous actions and return unified observation dict (flat keys for runner grouping).
         self._previous_actions = self._actions.clone()
@@ -613,8 +612,7 @@ class Go2LidarEnv(DirectRLEnv):
         # self._phase_signal[env_ids] = self._phase_signal[env_ids]  % 1.0
         
         # Reset buffers
-        # self.proprio_buffer_actor[reset_env_ids] = 0.0
-        # self.proprio_buffer_critic[reset_env_ids] = 0.0
+        self.proprio_hist.reset(reset_env_ids)
         
         # Logging
         extras = dict()
@@ -629,14 +627,3 @@ class Go2LidarEnv(DirectRLEnv):
         extras["Episode_Termination/base_contact"] = torch.count_nonzero(self.reset_terminated[reset_env_ids]).item()
         extras["Episode_Termination/time_out"] = torch.count_nonzero(self.reset_time_outs[reset_env_ids]).item()
         self.extras["log"].update(extras)
-
-
-
-    def _update_proprio_buffers(self, proprio_obs_actor: torch.Tensor, proprio_obs_critic: torch.Tensor) -> None:
-        """
-        updating odom_obs_hist, filled by the back: the most recent are at the end of the buffer.
-        """
-        self.proprio_buffer_actor = torch.roll(self.proprio_buffer_actor, -1, 1)
-        self.proprio_buffer_actor[:, -1, :] = proprio_obs_actor
-        self.proprio_buffer_critic = torch.roll(self.proprio_buffer_critic, -1, 1)
-        self.proprio_buffer_critic[:, -1, :] = proprio_obs_critic

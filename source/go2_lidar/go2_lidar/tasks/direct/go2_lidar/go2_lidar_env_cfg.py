@@ -614,7 +614,7 @@ class Go2LidarRoughEnvCfg(Go2LidarFlatEnvCfg):
     # NOTE: `res` is used as cell size in meters.
     
     # total tracked time = proprio_buffer_length * 0.02
-    proprio_buffer_length = 20
+    proprio_hist_length = 5
     
     
     height_map_dist = 1.0
