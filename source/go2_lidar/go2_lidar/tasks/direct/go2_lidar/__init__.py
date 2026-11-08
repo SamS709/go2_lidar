@@ -49,7 +49,7 @@ gym.register(
 
 gym.register(
     id="Isaac-Velocity-Rough-Go2-CNN-Lidar-Direct-v0",
-    entry_point=f"{__name__}.go2_cnn_lidar_env:Go2LidarCNNEnv",
+    entry_point=f"{__name__}.go2_lidar_env:Go2LidarEnv",
     disable_env_checker=True,
     kwargs={
         "env_cfg_entry_point": f"{__name__}.go2_lidar_env_cfg:Go2LidarRoughEnvCfg",

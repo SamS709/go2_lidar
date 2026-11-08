@@ -33,31 +33,33 @@ class Go2LidarFlatPPORunnerCfg(RslRlOnPolicyRunnerCfg):
 
     # Use distinct CNN-based actor and critic models that fuse proprio + grid.
     actor = RslRlCNNModelCfg(
-        hidden_dims=[128, 128, 128],
+        hidden_dims=[512, 256, 128],
         activation="elu",
         obs_normalization=True,
         cnn_cfg=RslRlCNNModelCfg.CNNCfg(
             output_channels=[16, 32],
             kernel_size=[3, 3],
-            stride=[2, 2],
+            stride=[1, 1],
+            padding="zeros",
             activation="relu",
             max_pool=False,
-            global_pool="avg",
+            global_pool="none",  
         ),
         distribution_cfg=RslRlCNNModelCfg.GaussianDistributionCfg(init_std=0.8, std_type="log"),
     )
 
     critic = RslRlCNNModelCfg(
-        hidden_dims=[128, 128, 128],
+        hidden_dims=[512, 256, 128],
         activation="elu",
         obs_normalization=True,
         cnn_cfg=RslRlCNNModelCfg.CNNCfg(
             output_channels=[16, 32],
             kernel_size=[3, 3],
-            stride=[2, 2],
+            stride=[1, 1],
+            padding="zeros",
             activation="relu",
             max_pool=False,
-            global_pool="avg",
+            global_pool="none",  
         ),
         distribution_cfg=RslRlCNNModelCfg.GaussianDistributionCfg(init_std=0.8, std_type="log"),
     )
@@ -82,36 +84,40 @@ class Go2LidarRoughCNNPPORunnerCfg(RslRlOnPolicyRunnerCfg):
     num_steps_per_env = 24
     max_iterations = 100000
     save_interval = 50
-    experiment_name = "go2_lidar_cnn"
+    experiment_name = "go2_lidar_cnn_rnn"
     obs_groups = {
         "actor": ["actor_proprio", "actor_grid"],
         "critic": ["critic_proprio", "critic_grid"],
     }
     actor = RslRlCNNModelCfg(
+        class_name=CNN_RNN_MODEL,
         hidden_dims=[512, 256, 128],
         activation="elu",
         obs_normalization=True,
         cnn_cfg=RslRlCNNModelCfg.CNNCfg(
             output_channels=[16, 32],
-            kernel_size=[5, 3],         
-            stride=[2, 2],
+            kernel_size=[3, 3],
+            stride=[1, 1],
+            padding="zeros",
             activation="relu",
             max_pool=False,
-            global_pool="none",         
+            global_pool="none",        
         ),
         distribution_cfg=RslRlMLPModelCfg.GaussianDistributionCfg(
             init_std=0.8, std_type="log"
         ),
     )
-
+    
     critic = RslRlCNNModelCfg(
+        class_name=CNN_RNN_MODEL,
         hidden_dims=[512, 256, 128],
         activation="elu",
         obs_normalization=True,
         cnn_cfg=RslRlCNNModelCfg.CNNCfg(
             output_channels=[16, 32],
-            kernel_size=[5, 3],
-            stride=[2, 2],
+            kernel_size=[3, 3],
+            stride=[1, 1],
+            padding="zeros",
             activation="relu",
             max_pool=False,
             global_pool="none",
@@ -121,15 +127,15 @@ class Go2LidarRoughCNNPPORunnerCfg(RslRlOnPolicyRunnerCfg):
         value_loss_coef=1.0,
         use_clipped_value_loss=True,
         clip_param=0.2,
-        entropy_coef=0.01,
         num_learning_epochs=5,
-        num_mini_batches=8,
-        learning_rate=1e-3,
+        num_mini_batches=16,
+        learning_rate=1e-4,
         schedule="adaptive",
         gamma=0.99,
         lam=0.95,
-        desired_kl=0.01,
         max_grad_norm=1.0,
+        entropy_coef=0.01,          
+        desired_kl=0.01,         
     )
     
 @configclass
@@ -400,7 +406,7 @@ class Go2LidarRoughCNNRNNPPORunnerCfg(RslRlOnPolicyRunnerCfg):
         clip_param=0.2,
         num_learning_epochs=5,
         num_mini_batches=16,
-        learning_rate=1e-3,
+        learning_rate=1e-4,
         schedule="adaptive",
         gamma=0.99,
         lam=0.95,
