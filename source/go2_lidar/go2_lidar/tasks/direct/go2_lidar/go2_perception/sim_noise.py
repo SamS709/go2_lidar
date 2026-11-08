@@ -120,3 +120,41 @@ def height_image(grid: HeightGrid, rays: torch.Tensor, dropout: CellDropout, noi
         height, keep = dropout.apply(height, locomotion)
         valid = hit & keep
     return grid.to_image(height), grid.to_image(valid)
+
+
+class LidarBlackout:
+    """Total, temporary loss of the lidar (sim only), independently per env and per episode.
+
+    Each episode every env draws ONE window [start, start + duration) in episode steps:
+        start    ~ U{0, ..., episode_length - 1}   (any moment, not necessarily the beginning)
+        duration ~ U{0, ..., episode_length}       (0 = no blackout, up to the whole episode)
+    While the window is active the height grid is replaced by ``fill_value`` and ``valid`` is set to False; when it
+    ends the sensor information comes back. The window may be cut by the end of the episode.
+    """
+
+    def __init__(self, num_envs: int, episode_length: int, fill_value: float, device):
+        self.L = max(1, int(episode_length))
+        self.fill_value = float(fill_value)
+        self.device = device
+        self.start = torch.zeros(num_envs, dtype=torch.long, device=device)
+        self.end = torch.zeros(num_envs, dtype=torch.long, device=device)
+        self.resample(torch.arange(num_envs, device=device))
+
+    def resample(self, env_ids: torch.Tensor) -> None:
+        n = env_ids.numel()
+        start = torch.randint(0, self.L, (n,), device=self.device)
+        duration = torch.randint(0, self.L + 1, (n,), device=self.device)
+        self.start[env_ids] = start
+        self.end[env_ids] = start + duration
+
+    def active(self, episode_step: torch.Tensor) -> torch.Tensor:
+        """episode_step [N] (long) -> bool [N]: True while the lidar is blacked out."""
+        return (episode_step >= self.start) & (episode_step < self.end)
+
+    def apply(self, height: torch.Tensor, valid: torch.Tensor, episode_step: torch.Tensor):
+        """height / valid [N, X, Y] -> (height, valid, active [N]). ``valid`` must still be boolean."""
+        active = self.active(episode_step)
+        m = active.view(-1, 1, 1)
+        height = torch.where(m, torch.full_like(height, self.fill_value), height)
+        valid = valid & ~m
+        return height, valid, active

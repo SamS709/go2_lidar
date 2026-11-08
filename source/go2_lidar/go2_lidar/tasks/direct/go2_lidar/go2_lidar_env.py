@@ -22,7 +22,9 @@ from isaaclab.managers import CommandManager, CurriculumManager
 from .go2_perception import HeightGrid
 from .go2_perception.height_grid import rays_in_lidar_frame
 from .go2_perception.locomotion import build_loc_obs, build_proprio
-from .go2_perception.sim_noise import CellDropout, LidarMisalignment, height_image, sample_lag, set_buffer_lag
+from .go2_perception.sim_noise import (
+    CellDropout, LidarBlackout, LidarMisalignment, height_image, sample_lag, set_buffer_lag
+)
 
 from .go2_lidar_env_cfg import Go2LidarFlatEnvCfg, Go2LidarRoughEnvCfg
 
@@ -116,6 +118,14 @@ class Go2LidarEnv(DirectRLEnv):
         self._undesired_contact_body_ids_sensor = self._thigh_ids_sensor + self._hip_ids_sensor + self._base_id_sensor
         self._body_contact_info_teacher_sensor = self._base_id_sensor + self._thigh_ids_sensor + self._calf_ids_sensor
         self._finite_warn_counter = 0
+
+        # Total lidar outages at random moments of the episode (sim only). Optional cfg fields:
+        #   lidar_blackout (bool, default True), blackout_fill_value (float, default 0.0), cell_dropout (bool, default True)
+        self.blackout = None
+        if isinstance(self.cfg, Go2LidarRoughEnvCfg) and getattr(self.cfg, "lidar_blackout", True):
+            self.blackout = LidarBlackout(
+                self.num_envs, self.max_episode_length, getattr(self.cfg, "blackout_fill_value", 0.0), self.device
+            )
         
         
         # self._step_freq = torch.tensor(self.cfg.desired_step_freq, device=self.device)
@@ -242,10 +252,17 @@ class Go2LidarEnv(DirectRLEnv):
         height_data, valid_critic = height_image(
             self.height_grid, rays_clean, self.dropout, noise=0.0, apply_dropout=False
         )
-        # actor: noisy; cell dropout only when randomizing (as in the navigation env)
+        # actor: noisy; partial cell dropout only when randomizing (as in the navigation env)
         height_data_actor, valid_actor = height_image(
-            self.height_grid, rays_actor, self.dropout, noise=0.01 if randomize else 0.0, apply_dropout=randomize
+            self.height_grid, rays_actor, self.dropout, noise=0.01 if randomize else 0.0,
+            apply_dropout=randomize and getattr(self.cfg, "cell_dropout", True),
         )
+        # total lidar outage: heights = preset value, valid = False, for the envs inside their blackout window
+        if randomize and self.blackout is not None:
+            height_data_actor, valid_actor, blackout_active = self.blackout.apply(
+                height_data_actor, valid_actor, self.episode_length_buf
+            )
+            self.extras.setdefault("log", {})["Debug/lidar_blackout_frac"] = blackout_active.float().mean()
 
         height_data = self._sanitize_tensor(height_data, "height_data", clamp_abs=10.0)
         height_data_actor = self._sanitize_tensor(height_data_actor, "height_data_actor", clamp_abs=10.0)
@@ -580,6 +597,8 @@ class Go2LidarEnv(DirectRLEnv):
         term.time_left[env_ids] = lower + (upper - lower) * torch.rand(len(reset_env_ids), device=self.device)
         if hasattr(self, "lidar_noise"):
             self.lidar_noise.resample(reset_env_ids)
+        if self.blackout is not None:
+            self.blackout.resample(reset_env_ids)
 
         if self.cfg.delay:
             L = int(self.cfg.delay_length)
