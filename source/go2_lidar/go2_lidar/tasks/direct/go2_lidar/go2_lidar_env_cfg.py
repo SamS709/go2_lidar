@@ -625,8 +625,8 @@ class Go2LidarRoughEnvCfg(Go2LidarFlatEnvCfg):
     sigma = 4.00
     n_zeros = 20
     max_reset_zeros_freq = 8
-    max_rot = 4.0
-    max_offset = 0.05
+    max_rot = 2.0
+    max_offset = 0.01
     
     height_scanner = RayCasterCfg(
         prim_path="/World/envs/env_.*/Robot/base/radar",

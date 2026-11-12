@@ -84,14 +84,13 @@ class Go2LidarRoughCNNPPORunnerCfg(RslRlOnPolicyRunnerCfg):
     num_steps_per_env = 24
     max_iterations = 100000
     save_interval = 50
-    experiment_name = "go2_lidar_cnn_rnn"
+    experiment_name = "go2_lidar_cnn"
     obs_groups = {
         "actor": ["actor_proprio", "actor_grid"],
         "critic": ["critic_proprio", "critic_grid"],
     }
     actor = RslRlCNNModelCfg(
-        class_name=CNN_RNN_MODEL,
-        hidden_dims=[512, 256, 128],
+        hidden_dims=[256, 128],
         activation="elu",
         obs_normalization=True,
         cnn_cfg=RslRlCNNModelCfg.CNNCfg(
@@ -109,8 +108,7 @@ class Go2LidarRoughCNNPPORunnerCfg(RslRlOnPolicyRunnerCfg):
     )
     
     critic = RslRlCNNModelCfg(
-        class_name=CNN_RNN_MODEL,
-        hidden_dims=[512, 256, 128],
+        hidden_dims=[256, 128],
         activation="elu",
         obs_normalization=True,
         cnn_cfg=RslRlCNNModelCfg.CNNCfg(
