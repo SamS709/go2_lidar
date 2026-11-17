@@ -617,7 +617,7 @@ class Go2LidarRoughEnvCfg(Go2LidarFlatEnvCfg):
     proprio_hist_length = 5
     
     
-    height_map_dist = 1.0
+    max_ray_dist = 2.0
     res = 0.1
     x_range = [-0.3, 0.5]
     y_range = [-0.5, 0.5]
@@ -640,6 +640,6 @@ class Go2LidarRoughEnvCfg(Go2LidarFlatEnvCfg):
         pattern_cfg=patterns.LidarPatternCfg(
             channels=64, vertical_fov_range=[0.0, 90.0], horizontal_fov_range=[-180, 180], horizontal_res=2.0
         ),
-        max_distance=1.0,
+        max_distance=max_ray_dist,
         debug_vis=False,
     )
