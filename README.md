@@ -45,6 +45,12 @@ git checkout 47c9f95eeab90dc3611981d894d59f163191f5b1
 git describe --tags --always    # should print v2.3.2-10-g47c9f95eeab
 ```
 
+If the isaaclab install doesnt work, do:
+```bash
+pip install "tensordict==0.8.3" --no-deps
+```
+then, reinstall isaaclab with pip intall -e source/isaaclab in IsaacLab diesctory for eg
+
 - Clone or copy this project/repository separately from the Isaac Lab installation (i.e. outside the `IsaacLab` directory):
   
     ```bash
