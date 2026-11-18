@@ -554,6 +554,8 @@ class Go2LidarFlatEnvCfg(DirectRLEnvCfg):
     
     delay: bool = True
     delay_length = 2
+
+    vis_obs_stats: bool = False # to debug teacher obs
         
     clamp_actions = False
     desired_clip_actions = 3.0

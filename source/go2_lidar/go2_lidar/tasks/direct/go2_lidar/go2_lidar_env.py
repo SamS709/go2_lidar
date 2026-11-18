@@ -118,6 +118,10 @@ class Go2LidarEnv(DirectRLEnv):
         self._body_contact_info_teacher_sensor = self._base_id_sensor + self._thigh_ids_sensor + self._calf_ids_sensor
         self._finite_warn_counter = 0
 
+        expected = ["FL_foot", "FR_foot", "RL_foot", "RR_foot"]
+        assert [self._robot.body_names[i] for i in self._feet_ids] == expected
+        assert [self._contact_sensor.body_names[i] for i in self._feet_ids_sensor] == expected
+
         # Total lidar outages at random moments of the episode (sim only). Optional cfg fields:
         #   lidar_blackout (bool, default True), blackout_fill_value (float, default 0.0), cell_dropout (bool, default True)
         self.blackout = None

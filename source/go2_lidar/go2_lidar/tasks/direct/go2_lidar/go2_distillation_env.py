@@ -41,11 +41,12 @@ class Go2TeacherStudentEnv(Go2LidarEnv):
         self._all_joint_ids = torch.arange(J, device=dev)
         self._rand_mass = torch.zeros(N, 1, device=dev)
         self._rand_com = torch.zeros(N, 3, device=dev)
-        self._rand_friction = torch.ones(N, 1, device=dev)
-        self._rand_restitution = torch.zeros(N, 1, device=dev)
+        self._rand_friction = torch.ones(N, 4, device=dev)
+        self._rand_restitution = torch.zeros(N, 4, device=dev)
         self._rand_kp = torch.zeros(N, J, device=dev)
         self._rand_kd = torch.zeros(N, J, device=dev)
         self._rand_push = torch.zeros(N, 6, device=dev)
+        self._cmd_scale = torch.tensor([2.0, 2.0, 0.25], device=self.device)
 
         # nominal COM = median over envs (the randomization is symmetric around it)
         coms = self._robot.root_physx_view.get_coms()
@@ -85,10 +86,13 @@ class Go2TeacherStudentEnv(Go2LidarEnv):
         self._rand_com[env_ids] = com_pos - self._nominal_com        # centered on the nominal COM
 
         # --- feet friction / restitution (startup) ---
-        mat = view.get_material_properties()                         # (N, num_shapes, 3) CPU: static, dynamic, restitution
-        foot_mat = mat[cpu_ids][:, self._foot_shape_ids]             # (n, n_foot_shapes, 3)
-        self._rand_friction[env_ids, 0] = foot_mat[..., 0].mean(-1).to(self.device)
-        self._rand_restitution[env_ids, 0] = foot_mat[..., 2].mean(-1).to(self.device)
+        mat = view.get_material_properties()         
+        n_envs = len(cpu_ids)                # (N, num_shapes, 3) CPU: static, dynamic, restitution
+        nf = len(self._feet_ids)
+        fm = mat[cpu_ids][:, self._foot_shape_ids]                           # (n, n_foot_shapes, 3)
+        fm = fm.view(n_envs, nf, -1, 3)                                      # assumes equal shapes per foot, in foot order
+        self._rand_friction[env_ids] = fm[..., 0].mean(-1).to(self.device)   # (N, 4)
+        self._rand_restitution[env_ids] = fm[..., 2].mean(-1).to(self.device)
 
         # --- actuator gains (reset, "scale") ---
         for act in robot.actuators.values():
@@ -184,30 +188,32 @@ class Go2TeacherStudentEnv(Go2LidarEnv):
         # ---- Teacher (privileged) proprio -------------------------------------------------
         s = self.cfg.obs_scales
         d = self._robot.data
-        cs = self.scene.sensors["contact_forces"]
-        fid = self._feet_ids                                   # (4,) from cs.find_bodies(".*_foot")
+        cs = self.scene.sensors["contact_sensor"]
+        fid_s = self._feet_ids_sensor   
+        fid_r = self._feet_ids                                # (4,) from cs.find_bodies(".*_foot")
 
         # base height above terrain, from the clean grid (heights are relative to desired_base_height)
-        base_height = (height_data_teacher + self.cfg.desired_base_height).mean(dim=(1, 2), keepdim=True).squeeze(-1)  # (N,1)
+        gx, gy = height_data_teacher.shape[-2:]
+        cx, cy = gx // 2, gy // 2
+        base_height = (height_data_teacher[:, cx-1:cx+2, cy-1:cy+2] + self.cfg.desired_base_height).mean(dim=(1, 2)).unsqueeze(-1)
 
         # contacts
-        feet_forces = cs.data.net_forces_w[:, fid, :]                              # (N,4,3)
+        feet_forces = cs.data.net_forces_w[:, fid_s, :]                              # (N,4,3)
         feet_force_mag = feet_forces.norm(dim=-1)                                  # (N,4)
         feet_contact = (feet_force_mag > 1.0).float()                              # (N,4)
-        air_time = cs.data.current_air_time[:, fid].clamp(max=1.0)                 # (N,4)  needs track_air_time=True
-
+        air_time = cs.data.current_air_time[:, fid_s].clamp(max=1.0)
         # feet kinematics in the base frame
         feet_pos_b = quat_apply_inverse(
-            d.root_quat_w.unsqueeze(1).expand(-1, len(fid), -1),
-            d.body_pos_w[:, fid] - d.root_pos_w.unsqueeze(1),
+            d.root_quat_w.unsqueeze(1).expand(-1, len(fid_r), -1),
+            d.body_pos_w[:, fid_r] - d.root_pos_w.unsqueeze(1),
         )                                                                          # (N,4,3)
         feet_vel_b = quat_apply_inverse(
-            d.root_quat_w.unsqueeze(1).expand(-1, len(fid), -1),
-            d.body_lin_vel_w[:, fid] - d.root_lin_vel_w.unsqueeze(1),
+            d.root_quat_w.unsqueeze(1).expand(-1, len(fid_r), -1),
+            d.body_lin_vel_w[:, fid_r] - d.root_lin_vel_w.unsqueeze(1),
         )                                                                          # (N,4,3)
         # foot clearance above the terrain below the base
         terrain_z = d.root_pos_w[:, 2:3] - base_height                             # (N,1)
-        feet_height = d.body_pos_w[:, fid, 2] - terrain_z                          # (N,4)
+        feet_height = d.body_pos_w[:, fid_r, 2] - terrain_z                          # (N,4)
 
         # terrain difficulty
         terr = self.scene.terrain
@@ -221,7 +227,7 @@ class Go2TeacherStudentEnv(Go2LidarEnv):
                 self.command_manager.get_command("base_velocity") * self._cmd_scale,   # tensor [2,2,0.25]
                 (d.joint_pos - d.default_joint_pos) * s.joint_pos,
                 d.joint_vel * s.joint_vel,
-                d.joint_acc * s.joint_acc,
+                (d.joint_acc, * s.joint_acc).clamp(-3.0, 3.0),
                 d.applied_torque * s.torque,
                 self._actions * s.action,
                 self._previous_actions * s.action,
@@ -248,7 +254,56 @@ class Go2TeacherStudentEnv(Go2LidarEnv):
             dim=-1,
         )
         proprio_teacher = self._sanitize_tensor(proprio_teacher, "teacher_proprio", clamp_abs=100.0)
-        
+        terms = {
+            # base state
+            "lin_vel":        d.root_lin_vel_b * s.lin_vel,                                              # 3
+            "ang_vel":        d.root_ang_vel_b * s.ang_vel,                                              # 3
+            "gravity":        d.projected_gravity_b * s.gravity,                                         # 3
+            "command":        self.command_manager.get_command("base_velocity") * self._cmd_scale,       # 3
+            # joints
+            "joint_pos":      (d.joint_pos - d.default_joint_pos) * s.joint_pos,                         # J
+            "joint_vel":      d.joint_vel * s.joint_vel,                                                 # J
+            "joint_acc":      (d.joint_acc * s.joint_acc).clamp(-3.0, 3.0),                                                 # J
+            "torque":         d.applied_torque * s.torque,                                               # J
+            "action":         self._actions * s.action,                                                  # J
+            "prev_act":       self._previous_actions * s.action,                                         # J
+            # terrain
+            "terrain_1hot":   self.get_terrain_one_hot(),                                                # T
+            "terrain_level":  terrain_level,                                                             # 1
+            "base_height":    base_height * s.height,                                                    # 1
+            # contacts / feet
+            "feet_contact":   feet_contact,                                                              # 4
+            "feet_force":     feet_force_mag * s.contact_force,                                          # 4
+            "air_time":       air_time * s.air_time,                                                     # 4
+            "feet_pos":       feet_pos_b.flatten(1) * s.feet_pos,                                        # 12
+            "feet_vel":       feet_vel_b.flatten(1) * s.feet_vel,                                        # 12
+            "feet_height":    feet_height * s.height,                                                    # 4
+            # randomization params
+            "rand_friction":  self._rand_friction * s.friction,                                          # 1
+            "rand_restit":    self._rand_restitution * s.restitution,                                    # 1
+            "rand_mass":      self._rand_mass * s.mass,                                                  # 1
+            "rand_com":       self._rand_com * s.com,                                                    # 3
+            "rand_kp":        self._rand_kp * s.gain,                                                    # J
+            "rand_kd":        self._rand_kd * s.gain,                                                    # J
+        }
+        proprio_teacher = torch.cat(list(terms.values()), dim=-1)
+        proprio_teacher = self._sanitize_tensor(proprio_teacher, "teacher_proprio", clamp_abs=100.0)
+
+        # ---- one-time layout print + periodic per-term stats ----------------------------
+        if not hasattr(self, "_teacher_obs_logged"):
+            self._teacher_obs_logged = True
+            i = 0
+            print("[teacher_proprio layout]")
+            for k, v in terms.items():
+                print(f"  {k:14s} [{i:3d}:{i + v.shape[-1]:3d}]  dim={v.shape[-1]}")
+                i += v.shape[-1]
+            print(f"  total dim = {i}")
+        if self.cfg.vis_obs_stats and self.common_step_counter % 500 == 0:
+            print(f"[teacher obs stats @ step {self.common_step_counter}]")
+            for k, v in terms.items():
+                flag = "  <-- DEAD" if v.std() < 1e-6 else ("  <-- LARGE" if v.abs().max() > 5 else "")
+                print(f"  {k:14s} mean={v.mean():+.3f} std={v.std():.3f} "
+                      f"min={v.min():+.2f} max={v.max():+.2f}{flag}")
         return {
             "student_proprio": proprio_student,
             "student_grid": grid_student,
@@ -256,153 +311,8 @@ class Go2TeacherStudentEnv(Go2LidarEnv):
             "teacher_grid": grid_teacher,
         }
 
-class Go2TeacherStudentCNNEnv(Go2LidarEnv):
-    """
-    Go2 environment for teacher-student distillation.
-    
-    Key concepts:
-    - Teacher gets PRIVILEGED observations (full state including linear velocity)
-    - Student gets LIMITED observations (no linear velocity - must infer from other signals)
-    - Both share the same action space
-    - The distillation algorithm trains the student to mimic the teacher's policy
-    """
-    
-    cfg: Go2LidarRoughEnvCfg
-
-    def __init__(self, cfg: Go2LidarRoughEnvCfg, render_mode: str | None = None, **kwargs):
-        super().__init__(cfg, render_mode, **kwargs)
-
-    def _get_observations(self) -> dict:
-        """
-        Return both student and teacher observations for distillation.
-        """
-        # height data (laser)
-        C, H, W = 1, 15, 10
-        # Previous height logic kept for reference:
-        # height_data = self._compute_height_data("normal")
-        height_data = self._compute_height_data_from_cloud() - 0.5
-        height_data_student = height_data + (2.0 * torch.rand_like(height_data) - 1.0) * float(0.01) * self.cfg.randomize
-        height_data_student = self._randomize_heightmap(height_data_student) 
-        height_data = height_data.view(self.num_envs, C, H, W)
-        height_data_student = height_data_student.view(self.num_envs, C, H, W) 
-        # torch.set_printoptions(precision=2, linewidth=1000, sci_mode=False)
-        # print(height_data+0.5)   
-        base_ang_vel = self._robot.data.root_ang_vel_b
-        projected_gravity = self._robot.data.projected_gravity_b
-        joint_pos_rel = self._robot.data.joint_pos - self._robot.data.default_joint_pos
-        joint_vel = self._robot.data.joint_vel
-        velocity_commands = self.command_manager.get_command("base_velocity")
-        # torch.set_printoptions(precision=2, linewidth=1000, sci_mode=False)
-        # cell_size_m = float(self.cfg.res)
-        # inv_cell_size = 1.0 / cell_size_m
-        # x_min, x_max = float(self.cfg.x_range[0]), float(self.cfg.x_range[1])
-        # y_min, y_max = float(self.cfg.y_range[0]), float(self.cfg.y_range[1])
-        # print(height_data_student.reshape(int((x_max - x_min)*inv_cell_size),int((y_max - y_min)*inv_cell_size)))
-        
-        # print(height_data.reshape(self.num_envs, 15, 10).flip(1,2))            
-            
-        
-        proprio_student = torch.cat(
-            [
-                base_ang_vel
-                + (2.0 * torch.rand_like(self._robot.data.root_lin_vel_b) - 1.0) * float(0.1) * self.cfg.randomize,
-                projected_gravity
-                + (2.0 * torch.rand_like(self._robot.data.projected_gravity_b) - 1.0) * float(0.05) * self.cfg.randomize,
-                velocity_commands,
-                joint_pos_rel
-                + (2.0 * torch.rand_like(self._robot.data.default_joint_pos) - 1.0) * float(0.01) * self.cfg.randomize,
-                joint_vel + (2.0 * torch.rand_like(self._robot.data.joint_vel) - 1.0) * float(0.1) * self.cfg.randomize,
-                self._actions,
-            ],
-            dim=-1,
-        )
-        
-        base_lin_vel = self._robot.data.root_lin_vel_b 
-        foot_contacts = (torch.norm(self._contact_sensor.data.net_forces_w[:, self._feet_ids_sensor], dim=-1) > 1.0).float()
-        is_contact = (
-            torch.max(torch.norm(self._contact_sensor.data.net_forces_w_history[:, :, self._body_contact_info_teacher_sensor], dim=-1), dim=1)[0] > 1.0
-        )
-
-        proprio_teacher = torch.cat(
-            [
-                base_ang_vel,      
-                projected_gravity, 
-                velocity_commands,       
-                joint_pos_rel,          
-                joint_vel,          
-                self._actions, 
-                base_lin_vel,                           
-                foot_contacts,     
-                is_contact,
-            ],
-            dim=-1,
-        )
-        teacher_height_scan = self._sanitize_tensor(height_data, "height_data", clamp_abs=10.0)
-        student_height_scan = self._sanitize_tensor(height_data_student, "height_data_student", clamp_abs=10.0)
-        teacher_proprio = self._sanitize_tensor(proprio_teacher, "teacher_obs", clamp_abs=100.0)
-        student_proprio = self._sanitize_tensor(proprio_student, "proprio_student", clamp_abs=100.0)
-        
-        self._previous_actions = self._actions.clone()
-        
-        return {
-            "student_proprio": student_proprio,
-            "student_height_scan": student_height_scan,
-            "teacher_proprio": teacher_proprio,
-            "teacher_height_scan": teacher_height_scan,
-        }
-
     def _reset_idx(self, env_ids):
         super()._reset_idx(env_ids)          # this applies the "reset" events (joint gains, etc.)
         env_ids = torch.as_tensor(env_ids, device=self.device)
         self._read_randomization(env_ids)
         self._rand_push[env_ids] = 0.0
-
-class Go2StudentEnv(Go2LidarEnv):
-    """
-    Go2 environment for student fine-tuning after distillation.
-    
-    This uses the same limited observations as the student during distillation,
-    but now trains with PPO to refine the policy.
-    """
-    
-    cfg: Go2LidarRoughEnvCfg
-
-    def __init__(self, cfg: Go2LidarRoughEnvCfg, render_mode: str | None = None, **kwargs):
-        super().__init__(cfg, render_mode, **kwargs)
-
-    def _get_observations(self) -> dict:
-        """
-        Return only student observations (same as during distillation).
-        """
-        # Previous height logic kept for reference:
-        # height_data = self._compute_height_data("normal")
-        height_data = self._compute_height_data_from_cloud()
-        height_data_student = height_data + (2.0 * torch.rand_like(height_data) - 1.0) * float(0.01) * self.cfg.randomize
-        height_data_student = self._randomize_heightmap(height_data_student) 
-        height_data = self._sanitize_tensor(height_data, "height_data", clamp_abs=10.0)
-        height_data_student = self._sanitize_tensor(height_data_student, "height_data_actor", clamp_abs=10.0)
-        
-        base_ang_vel = self._robot.data.root_ang_vel_b
-        projected_gravity = self._robot.data.projected_gravity_b 
-        joint_pos_rel = (self._robot.data.joint_pos - self._robot.data.default_joint_pos) 
-        joint_vel = self._robot.data.joint_vel    
-        velocity_commands = self.command_manager.get_command("base_velocity")
-        self._previous_actions = self._actions.clone()
-        student_obs = torch.cat(
-            [
-                base_ang_vel
-                + (2.0 * torch.rand_like(self._robot.data.root_lin_vel_b) - 1.0) * float(0.1) * self.cfg.randomize,
-                projected_gravity
-                + (2.0 * torch.rand_like(self._robot.data.projected_gravity_b) - 1.0) * float(0.05) * self.cfg.randomize,
-                velocity_commands,
-                joint_pos_rel
-                + (2.0 * torch.rand_like(self._robot.data.default_joint_pos) - 1.0) * float(0.01) * self.cfg.randomize,
-                joint_vel + (2.0 * torch.rand_like(self._robot.data.joint_vel) - 1.0) * float(0.1) * self.cfg.randomize,
-                height_data_student,
-                self._actions,
-            ],
-            dim=-1,
-        )
-        student_obs = self._sanitize_tensor(student_obs, "student_obs", clamp_abs=100.0)
-
-        return {"policy": student_obs}

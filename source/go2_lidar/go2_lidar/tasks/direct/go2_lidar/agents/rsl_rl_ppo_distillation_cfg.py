@@ -9,10 +9,10 @@ from isaaclab.utils import configclass
 
 """
 TRAIN TEACHER:
-python scripts/rsl_rl/train.py --task Isaac-Velocity-Rough-Go2-CNN-Lidar-v0 --agent rsl_rl_teacher_cfg_entry_point --num_envs 3072 --headless
+python scripts/rsl_rl/train.py --task Isaac-Velocity-Rough-Go2-CNN-Distillation-Lidar-v0 --agent rsl_rl_teacher_cfg_entry_point --num_envs 3072 --headless
 
 DISTILL STUDENT:
-python scripts/reinforcement_learning/rsl_rl/train.py --task Isaac-Velocity-Rough-Go2-CNN-Lidar-v0 --agent rsl_rl_distillation_cfg_entry_point --resume --load_run <teacher_run_folder> --checkpoint model_<N>.pt --num_envs 3072 --headless
+python scripts/reinforcement_learning/rsl_rl/train.py --task Isaac-Velocity-Rough-Go2-CNN-Distillation-Lidar-v0 --agent rsl_rl_distillation_cfg_entry_point --resume --load_run <teacher_run_folder> --checkpoint model_<N>.pt --num_envs 3072 --headless
     
 """
 
@@ -31,7 +31,7 @@ from isaaclab_rl.rsl_rl.rl_cfg import RslRlCNNModelCfg
 
 from isaaclab.utils import configclass
 
-from rsl_rl_ppo_cfg import Go2LidarRoughCNNPPORunnerCfg
+from .rsl_rl_ppo_cfg import Go2LidarRoughCNNPPORunnerCfg
 
 def _cnn():
     # must be identical to the PPO teacher's CNN so the checkpoint loads
