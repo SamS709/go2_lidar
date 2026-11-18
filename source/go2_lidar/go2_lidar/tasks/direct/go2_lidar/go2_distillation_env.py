@@ -227,7 +227,7 @@ class Go2TeacherStudentEnv(Go2LidarEnv):
                 self.command_manager.get_command("base_velocity") * self._cmd_scale,   # tensor [2,2,0.25]
                 (d.joint_pos - d.default_joint_pos) * s.joint_pos,
                 d.joint_vel * s.joint_vel,
-                (d.joint_acc, * s.joint_acc).clamp(-3.0, 3.0),
+                (d.joint_acc * s.joint_acc).clamp(-3.0, 3.0),
                 d.applied_torque * s.torque,
                 self._actions * s.action,
                 self._previous_actions * s.action,
