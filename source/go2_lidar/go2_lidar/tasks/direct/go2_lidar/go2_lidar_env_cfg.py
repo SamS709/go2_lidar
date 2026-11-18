@@ -466,7 +466,27 @@ class EventCfg:
                                    "roll": (-0.5, 0.5), "pitch": (-0.5, 0.5), "yaw": (-0.5, 0.5)}},
     )
     
-    
+@configclass
+class ObsScalesCfg:
+    lin_vel: float = 2.0
+    ang_vel: float = 0.25
+    gravity: float = 1.0
+    joint_pos: float = 1.0
+    joint_vel: float = 0.05
+    joint_acc: float = 0.0025
+    torque: float = 0.05            # ≈ 1 / typical peak torque; for a 23.5 Nm limit use ~0.04
+    action: float = 1.0
+    height: float = 5.0             # heights/clearances are ~0.1–0.4 m → ~0.5–2
+    contact_force: float = 0.01     # feet forces ~0–150 N → 0–1.5
+    air_time: float = 1.0           # already clamped to 1 s
+    feet_pos: float = 2.0           # offsets from the base, ~±0.3 m
+    feet_vel: float = 0.5
+    friction: float = 1.0        # 0.3–1.2
+    restitution: float = 5.0     # 0–0.15 → 0–0.75
+    mass: float = 0.5            # -1..+3 kg → -0.5..1.5
+    com: float = 10.0            # ±0.1 m → ±1
+    gain: float = 5.0            # ±0.2 → ±1
+
 
 
 @configclass
@@ -526,6 +546,9 @@ class Go2LidarFlatEnvCfg(DirectRLEnvCfg):
     contact_sensor: ContactSensorCfg = ContactSensorCfg(
         prim_path="/World/envs/env_.*/Robot/.*", history_length=3, update_period=0.005, track_air_time=True
     )
+    
+    # Obs scales
+    obs_scales: ObsScalesCfg = ObsScalesCfg()
 
     randomize = True
     
