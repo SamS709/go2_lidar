@@ -35,7 +35,15 @@ The goal of this repo is to add the lidar of the go2 as a perception module so t
 
 ## Installation
 
-- Install **Isaac Lab** following the [official installation guide](https://isaac-sim.github.io/IsaacLab/main/source/setup/installation/pip_installation.html) (tested with **Isaac Sim 5.1.0** and **Isaac Lab v2.3.1**).
+- Install **Isaac Lab** following the [official installation guide](https://isaac-sim.github.io/IsaacLab/main/source/setup/installation/pip_installation.html) (tested with **Isaac Sim 5.1.0** and **Isaac Lab v2.3.2**).
+When cloning repo, do (before installing):
+
+```bash
+cd IsaacLab
+git fetch --all --tags
+git checkout 47c9f95eeab90dc3611981d894d59f163191f5b1
+git describe --tags --always    # should print v2.3.2-10-g47c9f95eeab
+```
 
 - Clone or copy this project/repository separately from the Isaac Lab installation (i.e. outside the `IsaacLab` directory):
   
